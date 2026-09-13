@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "PyCoH: adaptador CoH para transformers"
+message: "Si usás este software, citalo como se indica aquí."
+type: software
+authors:
+  - family-names: "Ramírez Azofeifa"
+    given-names: "Franklin Moisés"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   ← completar
+repository-code: "https://github.com/USUARIO/pycoh"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-09-13"
+keywords:
+  - pytorch
+  - transformers
+  - parameter-efficient-fine-tuning
+  - adapter
+# Fundamento teórico. Completar con los DOI reales de los preprints.
+# references:
+#   - type: article
+#     title: "..."
+#     authors:
+#       - family-names: "Ramírez Azofeifa"
+#         given-names: "Franklin Moisés"
+#     doi: "10.5281/zenodo.XXXXXXX"
