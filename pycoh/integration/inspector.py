@@ -1,14 +1,14 @@
 """
-pycoh.integration.inspector — descubrimiento estructural. Solo lectura.
+pycoh.integration.inspector -- structural discovery. Read only.
 
-El Inspector observa y produce evidencia. No decide, no muta, no lanza
-excepciones por topologías extrañas: si no encuentra nada devuelve una
-lista vacía de candidatos y el Resolver se encarga de fallar.
+The inspector observes and produces evidence. It does not decide, does not
+mutate, and does not raise on unusual topologies: if it finds nothing it
+returns an empty candidate list and the resolver is the one that fails.
 
-El descubrimiento es estructural. No se puntúa ni se filtra por
-substrings del path ("encoder", "layers", "block"): eso acierta en las
-arquitecturas que uno ya conoce y falla en silencio en las demás. Los
-criterios son propiedades del grafo de módulos.
+Discovery is structural. Candidates are never scored or filtered by
+substrings of their path ("encoder", "layers", "block"): that works on the
+architectures you already know and fails silently on every other one. The
+criteria are properties of the module graph.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ __all__ = ["CandidateContainer", "ModelInfo", "inspect_model"]
 
 @dataclass(frozen=True)
 class CandidateContainer:
-    """Un `nn.ModuleList` homogéneo que podría ser la pila de bloques."""
+    """A homogeneous `nn.ModuleList` that could be the block stack."""
 
     path: str
     container: nn.ModuleList
@@ -46,9 +46,9 @@ class ModelInfo:
 
 def _declared_hidden_size(model: nn.Module) -> Tuple[Optional[int], Optional[str]]:
     """
-    Fuentes declarativas únicamente, en el orden fijado por el contrato.
-    Nunca se infiere de la forma de un peso: una dimensión adivinada puede
-    ser correcta hoy y ocultar una arquitectura incompatible mañana.
+    Declarative sources only, in the order fixed by the contract. The value
+    is never inferred from the shape of a weight: a guessed dimension can be
+    right today and hide an incompatible architecture tomorrow.
     """
     config = getattr(model, "config", None)
     if config is None:
@@ -68,15 +68,15 @@ def _is_homogeneous(container: nn.ModuleList) -> bool:
 
 
 def _touches(block: nn.Module, hidden_size: int) -> bool:
-    """¿Algún parámetro del bloque opera sobre la dimensión del residual?"""
+    """Does any parameter of the block operate on the residual dimension?"""
     return any(hidden_size in tuple(p.shape) for p in block.parameters())
 
 
 def inspect_model(model: nn.Module) -> ModelInfo:
     if not isinstance(model, nn.Module):
-        raise TypeError(f"model debe ser nn.Module, recibido {type(model).__name__}")
+        raise TypeError(f"model must be an nn.Module, got {type(model).__name__}")
 
-    # Import local: evita un ciclo con integration.wrapper.
+    # Local import: avoids a cycle with integration.wrapper.
     from pycoh.integration.wrapper import CoHBlockWrapper
 
     injected = tuple(
@@ -103,15 +103,15 @@ def inspect_model(model: nn.Module) -> ModelInfo:
         touches = _touches(blocks[0], hidden_size) if hidden_size is not None else None
 
         evidence = [
-            f"nn.ModuleList homogéneo de {len(blocks)}x {type(blocks[0]).__name__}",
-            "anidado dentro de otro candidato" if nested else "contenedor más externo",
+            f"homogeneous nn.ModuleList of {len(blocks)}x {type(blocks[0]).__name__}",
+            "nested inside another candidate" if nested else "outermost container",
         ]
         if touches is True:
-            evidence.append(f"sus parámetros operan sobre d_model={hidden_size}")
+            evidence.append(f"its parameters operate on d_model={hidden_size}")
         elif touches is False:
-            evidence.append(f"ningún parámetro opera sobre d_model={hidden_size}")
+            evidence.append(f"no parameter operates on d_model={hidden_size}")
         else:
-            evidence.append("d_model no declarado: no verificable")
+            evidence.append("d_model not declared: not verifiable")
 
         candidates.append(
             CandidateContainer(

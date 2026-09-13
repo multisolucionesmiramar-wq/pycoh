@@ -132,7 +132,7 @@ def test_metadata_fields(tmp_path):
 
 
 def test_save_requires_injected_model(tmp_path):
-    with pytest.raises(RuntimeError, match="no tiene CoH"):
+    with pytest.raises(RuntimeError, match="has no CoH"):
         save_adapter(TinyModel(), tmp_path / "a.pt")
 
 
@@ -141,7 +141,7 @@ def test_save_rejects_heterogeneous_configs(tmp_path):
 
     model = injected()
     model.layers[1] = CoHBlockWrapper(model.layers[1].block, CoH(D_MODEL, D_TAU + 4))
-    with pytest.raises(ValueError, match="no comparten configuración"):
+    with pytest.raises(ValueError, match="do not share a configuration"):
         save_adapter(model, tmp_path / "a.pt")
 
 
@@ -150,7 +150,7 @@ def test_save_rejects_heterogeneous_configs(tmp_path):
 def test_load_requires_injected_model(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(injected(), f)
-    with pytest.raises(RuntimeError, match="no tiene CoH"):
+    with pytest.raises(RuntimeError, match="has no CoH"):
         load_adapter(TinyModel(), f)
 
 
@@ -159,7 +159,7 @@ def test_topology_mismatch_rejected(tmp_path):
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 1]), f)
 
     destino = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
-    with pytest.raises(RuntimeError, match="topología"):
+    with pytest.raises(RuntimeError, match="adapter topology"):
         load_adapter(destino, f)
 
 
@@ -167,7 +167,7 @@ def test_layer_count_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU), f)
     destino = apply_coh(TinyModel(), d_tau=D_TAU, layers=2)
-    with pytest.raises(RuntimeError, match="topología"):
+    with pytest.raises(RuntimeError, match="adapter topology"):
         load_adapter(destino, f)
 
 
@@ -175,7 +175,7 @@ def test_d_tau_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU), f)
     destino = apply_coh(TinyModel(), d_tau=D_TAU * 2)
-    with pytest.raises(RuntimeError, match="d_tau incompatible"):
+    with pytest.raises(RuntimeError, match="incompatible d_tau"):
         load_adapter(destino, f)
 
 
@@ -188,14 +188,14 @@ def test_r_max_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.98), f)
     destino = apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.90)
-    with pytest.raises(RuntimeError, match="r_max incompatible"):
+    with pytest.raises(RuntimeError, match="incompatible r_max"):
         load_adapter(destino, f)
 
 
 @pytest.mark.parametrize(
     "mutacion, patron",
     [
-        ({"mechanism": "lora"}, "mecanismo desconocido"),
+        ({"mechanism": "lora"}, "unknown mechanism"),
         ({"format_version": 99}, "format_version"),
     ],
 )
@@ -213,7 +213,7 @@ def test_foreign_payload_rejected(tmp_path, mutacion, patron):
 def test_malformed_payload_rejected(tmp_path):
     f = tmp_path / "basura.pt"
     torch.save({"cualquier": "cosa"}, f)
-    with pytest.raises(ValueError, match="no tiene la forma"):
+    with pytest.raises(ValueError, match="does not have the shape"):
         load_adapter(injected(), f)
 
 
@@ -224,7 +224,7 @@ def test_missing_keys_rejected(tmp_path):
     del payload["state_dict"]["layers.2.beta"]
     torch.save(payload, f)
 
-    with pytest.raises(RuntimeError, match="claves incompatibles"):
+    with pytest.raises(RuntimeError, match="incompatible keys"):
         load_adapter(injected(), f)
 
 
@@ -235,7 +235,7 @@ def test_orphan_keys_rejected(tmp_path):
     payload["state_dict"]["layers.99.beta"] = torch.tensor(0.5)
     torch.save(payload, f)
 
-    with pytest.raises(RuntimeError, match="no corresponden"):
+    with pytest.raises(RuntimeError, match="match no CoH module"):
         load_adapter(injected(), f)
 
 
@@ -257,7 +257,7 @@ def test_no_partial_load_on_bad_shape(tmp_path):
 
     destino = injected()
     antes = coh_state(destino)
-    with pytest.raises(RuntimeError, match="forma incompatible"):
+    with pytest.raises(RuntimeError, match="incompatible shape"):
         load_adapter(destino, f)
 
     despues = coh_state(destino)

@@ -135,14 +135,14 @@ def test_reapply_after_removal():
 # ── 4. contrato de errores y congelamiento ───────────────────────────────
 
 def test_remove_on_clean_model_raises():
-    with pytest.raises(RuntimeError, match="no tiene CoH"):
+    with pytest.raises(RuntimeError, match="has no CoH"):
         remove_coh(limpio())
 
 
 def test_double_removal_raises():
     m = inyectado()
     remove_coh(m)
-    with pytest.raises(RuntimeError, match="no tiene CoH"):
+    with pytest.raises(RuntimeError, match="has no CoH"):
         remove_coh(m)
 
 

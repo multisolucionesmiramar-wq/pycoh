@@ -1,5 +1,5 @@
 """
-pycoh.core.coh — núcleo del mecanismo CoH.
+pycoh.core.coh -- the CoH mechanism.
 
     z  = W_tau h
     r  = min(sigmoid(phi(z)), r_max)
@@ -7,8 +7,8 @@ pycoh.core.coh — núcleo del mecanismo CoH.
     J  = normalize(W_out z)
     dh = beta * J * s
 
-La corrección se calcula sobre la ENTRADA del bloque. Toda la aritmética
-ocurre en FP32 y el resultado se devuelve en el dtype de entrada.
+The correction is computed from the block's INPUT. All arithmetic runs in
+FP32 and the result is returned in the input dtype.
 """
 
 from __future__ import annotations
@@ -21,18 +21,18 @@ import torch.nn.functional as F
 
 __all__ = ["CoH"]
 
-# device_type aceptados por torch.autocast en las versiones soportadas.
+# device_type values accepted by torch.autocast on supported versions.
 _AUTOCAST_DEVICES = ("cuda", "cpu", "xpu")
 
 
 def _fp32_context(device_type: str):
     """
-    Desactiva autocast dentro del núcleo.
+    Disable autocast inside the core.
 
-    Bajo AMP, torch.autocast castea las entradas de las operaciones
-    lineales a la precisión baja sin importar el dtype que se les pase:
-    `hidden.float()` por si solo NO garantiza aritmetica FP32. Este
-    contexto es la unica garantia real.
+    Under AMP, torch.autocast casts the inputs of linear operations down to
+    low precision regardless of the dtype they are given: `hidden.float()`
+    alone does NOT guarantee FP32 arithmetic. This context is the only real
+    guarantee.
     """
     if device_type in _AUTOCAST_DEVICES:
         return torch.autocast(device_type=device_type, enabled=False)
@@ -41,20 +41,20 @@ def _fp32_context(device_type: str):
 
 class CoH(nn.Module):
     """
-    Núcleo de CoH. Devuelve la corrección `delta`, no el estado corregido.
-    La suma `B(h) + delta` es responsabilidad del wrapper.
+    CoH core. Returns the correction `delta`, not the corrected state.
+    Adding `B(h) + delta` is the wrapper's job.
 
     Args:
-        d_model: dimensión del estado oculto del bloque.
-        d_tau: dimensión del cuello de botella. Requerido, sin default.
-        beta_init: valor inicial de la amplitud. Default 0.5.
-        r_max: techo del gate. Default 0.98.
-        trainable_beta: si True, beta recibe gradiente. Default False.
+        d_model: hidden size of the block.
+        d_tau: bottleneck width. Required, no default.
+        beta_init: initial correction amplitude. Defaults to 0.5.
+        r_max: gate ceiling. Defaults to 0.98.
+        trainable_beta: if True, beta receives gradients. Defaults to False.
 
-    Atención: `beta` es un `nn.Parameter` persistente (viaja en el
-    `state_dict`) aunque por defecto esté congelado. Un adapter guardado
-    contiene su propio valor de beta y no depende de que el usuario
-    vuelva a suministrarlo por configuración.
+    Note: `beta` is a persistent `nn.Parameter` (it travels in the
+    `state_dict`) even though it is frozen by default. A saved adapter
+    therefore carries its own beta and does not depend on the user
+    supplying it again through configuration.
     """
 
     NORMALIZE_EPS: float = 1e-12
@@ -70,11 +70,11 @@ class CoH(nn.Module):
         super().__init__()
 
         if not isinstance(d_model, int) or d_model <= 0:
-            raise ValueError(f"d_model debe ser un entero positivo, recibido {d_model!r}")
+            raise ValueError(f"d_model must be a positive integer, got {d_model!r}")
         if not isinstance(d_tau, int) or d_tau <= 0:
-            raise ValueError(f"d_tau debe ser un entero positivo, recibido {d_tau!r}")
+            raise ValueError(f"d_tau must be a positive integer, got {d_tau!r}")
         if not 0.0 < float(r_max) < 1.0:
-            raise ValueError(f"r_max debe estar en (0, 1), recibido {r_max!r}")
+            raise ValueError(f"r_max must lie in (0, 1), got {r_max!r}")
 
         self.d_model = int(d_model)
         self.d_tau = int(d_tau)
@@ -89,7 +89,7 @@ class CoH(nn.Module):
             requires_grad=bool(trainable_beta),
         )
 
-    # ── introspección ────────────────────────────────────────────────────
+    # -- introspection ----------------------------------------------------
 
     @property
     def trainable_beta(self) -> bool:
@@ -109,21 +109,22 @@ class CoH(nn.Module):
             f"trainable_beta={self.trainable_beta}"
         )
 
-    # ── núcleo ───────────────────────────────────────────────────────────
+    # -- core -------------------------------------------------------------
 
     def _stages(self, hidden: torch.Tensor) -> dict:
         """
-        Devuelve todas las etapas intermedias en FP32. Existe para que los
-        tests puedan comparar contra una referencia matemática etapa por
-        etapa; no forma parte de la API pública.
+        Return every intermediate stage in FP32. It exists so that tests can
+        compare against an independent mathematical reference stage by
+        stage; it is not part of the public API.
 
-        Los pesos se castean con `.float()` antes de cada operación: si el
-        tensor ya es FP32 la llamada es un no-op sin copia, y si el módulo
-        fue convertido a media precisión la aritmética sigue siendo FP32.
+        Weights are cast with `.float()` before each operation: on a tensor
+        that is already FP32 the call is a no-op with no copy, and if the
+        module was converted to half precision the arithmetic still runs in
+        FP32.
         """
         if hidden.shape[-1] != self.d_model:
             raise ValueError(
-                f"última dimensión {hidden.shape[-1]} != d_model {self.d_model}"
+                f"last dimension {hidden.shape[-1]} != d_model {self.d_model}"
             )
 
         with _fp32_context(hidden.device.type):

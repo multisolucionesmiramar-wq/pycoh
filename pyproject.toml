@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pycoh"
 version = "0.1.0"
-description = "Adaptador CoH para transformers: corrección direccional en el residual stream con el modelo base congelado"
+description = "CoH adapter for transformers: a directional correction in the residual stream with the base model frozen"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -24,8 +24,8 @@ dev = ["pytest>=7.0"]
 integration = ["transformers>=4.40", "accelerate>=0.30"]
 
 [project.urls]
-Homepage = "https://github.com/multisolucionesmiramar-wq/pycoh"
-Issues = "https://github.com/multisolucionesmiramar-wq/pycoh/issues"
+Homepage = "https://github.com/USUARIO/pycoh"
+Issues = "https://github.com/USUARIO/pycoh/issues"
 
 [tool.setuptools.packages.find]
 include = ["pycoh*"]

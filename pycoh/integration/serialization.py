@@ -1,13 +1,13 @@
 """
-pycoh.integration.serialization — guardar y cargar adaptadores.
+pycoh.integration.serialization -- saving and loading adapters.
 
-Un adaptador contiene exclusivamente el estado de los módulos CoH. No
-contiene un solo peso del modelo huésped: para reconstruir hay que partir
-del checkpoint base, aplicar `apply_coh` y después cargar el adaptador.
+An adapter holds the state of the CoH modules and nothing else. It carries
+no weight of the host model: rebuilding means starting from the base
+checkpoint, calling `apply_coh` and then loading the adapter.
 
-La extracción es estructural (`isinstance(module, CoHBlockWrapper)`), no
-por filtrado de nombres: filtrar por la subcadena ".coh." funcionaría hoy
-y volvería a atarnos a los nombres, que es justo lo que F2 eliminó.
+Extraction is structural (`isinstance(module, CoHBlockWrapper)`) rather
+than name-based: filtering on the substring ".coh." would work today and
+would tie us back to names, which is exactly what F2 removed.
 """
 
 from __future__ import annotations
@@ -34,30 +34,32 @@ def _collect(model: nn.Module) -> List[Tuple[str, CoHBlockWrapper]]:
     ]
     if not found:
         raise RuntimeError(
-            "El modelo no tiene CoH aplicado. Llama a apply_coh(...) antes."
+            "The model has no CoH applied. Call apply_coh(...) first."
         )
     return found
 
 
 def _shared_config(wrappers: List[Tuple[str, CoHBlockWrapper]]) -> Dict[str, Any]:
     """
-    El adaptador declara una sola configuración, así que exige que todos
-    los CoH la compartan. Si alguien construyó a mano capas con distinto
-    d_tau, se falla en vez de registrar el valor de la primera.
+    The adapter declares a single configuration, so every CoH must share it.
+    If someone hand-built layers with different d_tau values we fail instead
+    of recording whichever came first.
     """
     configs = {
         path: (w.coh.d_model, w.coh.d_tau, w.coh.r_max, w.coh.trainable_beta)
         for path, w in wrappers
     }
-    distintas = set(configs.values())
-    if len(distintas) > 1:
-        detalle = "\n".join(f"  {p}: d_model={c[0]}, d_tau={c[1]}, r_max={c[2]}, trainable_beta={c[3]}"
-                            for p, c in configs.items())
-        raise ValueError(
-            "Los módulos CoH del modelo no comparten configuración y el "
-            "formato de adaptador declara una sola:\n" + detalle
+    distinct = set(configs.values())
+    if len(distinct) > 1:
+        detail = "\n".join(
+            f"  {p}: d_model={c[0]}, d_tau={c[1]}, r_max={c[2]}, trainable_beta={c[3]}"
+            for p, c in configs.items()
         )
-    d_model, d_tau, r_max, trainable_beta = distintas.pop()
+        raise ValueError(
+            "The CoH modules in this model do not share a configuration and "
+            "the adapter format declares a single one:\n" + detail
+        )
+    d_model, d_tau, r_max, trainable_beta = distinct.pop()
     return {
         "d_model": d_model,
         "d_tau": d_tau,
@@ -68,10 +70,10 @@ def _shared_config(wrappers: List[Tuple[str, CoHBlockWrapper]]) -> Dict[str, Any
 
 def save_adapter(model: nn.Module, path: str | os.PathLike) -> Dict[str, Any]:
     """
-    Guarda el estado CoH del modelo. Devuelve los metadatos escritos.
+    Save the model's CoH state. Returns the metadata that was written.
 
-    El archivo resultante pesa lo que pesa CoH (unos 24 MB con d_model=960,
-    d_tau=96 y 32 capas), no lo que pesa el modelo.
+    The resulting file weighs what CoH weighs (about 24 MB with d_model=960,
+    d_tau=96 and 32 layers), not what the model weighs.
     """
     wrappers = _collect(model)
     config = _shared_config(wrappers)
@@ -93,45 +95,46 @@ def save_adapter(model: nn.Module, path: str | os.PathLike) -> Dict[str, Any]:
 
 
 def adapter_metadata(path: str | os.PathLike) -> Dict[str, Any]:
-    """Lee solo los metadatos, sin tocar ningún modelo."""
+    """Read the metadata only, without touching any model."""
     return _read_payload(path)["metadata"]
 
 
 def _read_payload(path: str | os.PathLike) -> Dict[str, Any]:
-    # weights_only=True impide que un archivo descargado ejecute código
-    # arbitrario al deserializarse. Los metadatos son tipos simples, así
-    # que pasan el filtro sin problema.
+    # weights_only=True stops a downloaded file from executing arbitrary
+    # code while being deserialized. The metadata are plain types, so they
+    # pass the filter without trouble.
     payload = torch.load(path, map_location="cpu", weights_only=True)
 
     if not isinstance(payload, dict) or "metadata" not in payload or "state_dict" not in payload:
-        raise ValueError(f"{path} no tiene la forma de un adaptador PyCoH")
+        raise ValueError(f"{path} does not have the shape of a PyCoH adapter")
 
     meta = payload["metadata"]
     if meta.get("mechanism") != MECHANISM:
         raise ValueError(
-            f"mecanismo desconocido: {meta.get('mechanism')!r}, se esperaba {MECHANISM!r}"
+            f"unknown mechanism: {meta.get('mechanism')!r}, expected {MECHANISM!r}"
         )
     version = meta.get("format_version")
     if version != FORMAT_VERSION:
         raise ValueError(
-            f"format_version {version!r} no soportada por esta versión de PyCoH "
-            f"(soporta {FORMAT_VERSION})"
+            f"format_version {version!r} is not supported by this build of PyCoH "
+            f"(it supports {FORMAT_VERSION})"
         )
     return payload
 
 
 def load_adapter(model: nn.Module, path: str | os.PathLike) -> Dict[str, Any]:
     """
-    Restaura el estado CoH sobre un modelo que YA tiene CoH aplicado.
+    Restore CoH state onto a model that ALREADY has CoH applied.
 
-    No modifica la topología ni crea módulos: si el modelo no fue
-    inyectado, o lo fue con otra configuración o en otras capas, falla sin
-    tocar nada. La validación es completa antes de escribir el primer
-    tensor, de modo que un adaptador incompatible no deja el modelo a
-    medio cargar.
+    It does not change the topology and creates no modules: if the model was
+    not injected, or was injected with a different configuration or on
+    different layers, it fails without touching anything. Validation is
+    complete before the first tensor is written, so an incompatible adapter
+    never leaves the model half-loaded.
 
-    `trainable_beta` del archivo es informativo: describe cómo se entrenó,
-    no cambia lo que el usuario configuró en este modelo.
+    `trainable_beta` from the file is informational: it describes how the
+    adapter was trained and does not change what the user configured on this
+    model.
     """
     payload = _read_payload(path)
     meta = payload["metadata"]
@@ -142,59 +145,59 @@ def load_adapter(model: nn.Module, path: str | os.PathLike) -> Dict[str, Any]:
     saved_paths = list(meta["injected_paths"])
 
     if current_paths != saved_paths:
-        faltan = [p for p in saved_paths if p not in current_paths]
-        sobran = [p for p in current_paths if p not in saved_paths]
+        missing = [p for p in saved_paths if p not in current_paths]
+        extra = [p for p in current_paths if p not in saved_paths]
         raise RuntimeError(
-            "La topología del adaptador no coincide con la del modelo.\n"
-            f"  adaptador: {len(saved_paths)} capas\n"
-            f"  modelo:    {len(current_paths)} capas\n"
-            + (f"  en el adaptador y no en el modelo: {faltan}\n" if faltan else "")
-            + (f"  en el modelo y no en el adaptador: {sobran}\n" if sobran else "")
-            + "Aplica apply_coh con las mismas capas antes de cargar."
+            "The adapter topology does not match the model.\n"
+            f"  adapter: {len(saved_paths)} layers\n"
+            f"  model:   {len(current_paths)} layers\n"
+            + (f"  in the adapter but not in the model: {missing}\n" if missing else "")
+            + (f"  in the model but not in the adapter: {extra}\n" if extra else "")
+            + "Call apply_coh with the same layers before loading."
         )
 
     config = _shared_config(wrappers)
-    for campo in ("d_model", "d_tau", "r_max"):
-        if meta[campo] != config[campo]:
+    for field in ("d_model", "d_tau", "r_max"):
+        if meta[field] != config[field]:
             raise RuntimeError(
-                f"{campo} incompatible: el adaptador declara {meta[campo]!r} y "
-                f"el modelo tiene {config[campo]!r}"
+                f"incompatible {field}: the adapter declares {meta[field]!r} and "
+                f"the model has {config[field]!r}"
             )
 
-    # Reparto y validación completos ANTES de escribir nada.
-    por_modulo: Dict[str, Dict[str, torch.Tensor]] = {}
+    # Full split and validation BEFORE writing anything.
+    per_module: Dict[str, Dict[str, torch.Tensor]] = {}
     for wrapper_path, wrapper in wrappers:
-        prefijo = wrapper_path + "."
+        prefix = wrapper_path + "."
         local = {
-            k[len(prefijo):]: v for k, v in state.items() if k.startswith(prefijo)
+            k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)
         }
-        esperado = wrapper.coh.state_dict()
+        expected = wrapper.coh.state_dict()
 
-        if set(local) != set(esperado):
-            faltan = sorted(set(esperado) - set(local))
-            sobran = sorted(set(local) - set(esperado))
+        if set(local) != set(expected):
+            missing = sorted(set(expected) - set(local))
+            extra = sorted(set(local) - set(expected))
             raise RuntimeError(
-                f"claves incompatibles en {wrapper_path}: "
-                f"faltan {faltan}, sobran {sobran}"
+                f"incompatible keys at {wrapper_path}: "
+                f"missing {missing}, unexpected {extra}"
             )
         for k, v in local.items():
-            if tuple(v.shape) != tuple(esperado[k].shape):
+            if tuple(v.shape) != tuple(expected[k].shape):
                 raise RuntimeError(
-                    f"forma incompatible en {wrapper_path}.{k}: "
-                    f"adaptador {tuple(v.shape)}, modelo {tuple(esperado[k].shape)}"
+                    f"incompatible shape at {wrapper_path}.{k}: "
+                    f"adapter {tuple(v.shape)}, model {tuple(expected[k].shape)}"
                 )
-        por_modulo[wrapper_path] = local
+        per_module[wrapper_path] = local
 
-    huerfanas = set(state) - {
-        f"{p}.{k}" for p, local in por_modulo.items() for k in local
+    orphans = set(state) - {
+        f"{p}.{k}" for p, local in per_module.items() for k in local
     }
-    if huerfanas:
+    if orphans:
         raise RuntimeError(
-            f"el adaptador contiene {len(huerfanas)} claves que no corresponden "
-            f"a ningún módulo CoH: {sorted(huerfanas)[:5]}"
+            f"the adapter holds {len(orphans)} keys that match no CoH module: "
+            f"{sorted(orphans)[:5]}"
         )
 
     for wrapper_path, wrapper in wrappers:
-        wrapper.coh.load_state_dict(por_modulo[wrapper_path], strict=True)
+        wrapper.coh.load_state_dict(per_module[wrapper_path], strict=True)
 
     return meta

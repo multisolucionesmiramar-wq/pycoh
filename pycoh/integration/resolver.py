@@ -1,9 +1,9 @@
 """
-pycoh.integration.resolver — convierte evidencia en decisión.
+pycoh.integration.resolver -- turning evidence into a decision.
 
-El Inspector puede equivocarse de candidato; el Resolver no puede
-equivocarse en silencio. Ante cualquier ambigüedad, falla con un mensaje
-que enumera las opciones y pide `target_modules`. Nunca escoge
+The inspector is allowed to pick the wrong candidate; the resolver is not
+allowed to be wrong silently. On any ambiguity it fails with a message
+listing the options and asking for `target_modules`. It never picks
 `candidates[0]`.
 """
 
@@ -32,14 +32,14 @@ class ResolvedTarget:
 def resolve_hidden_size(info: ModelInfo, override: Optional[int]) -> int:
     if override is not None:
         if not isinstance(override, int) or isinstance(override, bool) or override <= 0:
-            raise ValueError(f"hidden_size debe ser un entero positivo, recibido {override!r}")
+            raise ValueError(f"hidden_size must be a positive integer, got {override!r}")
         return override
     if info.hidden_size is not None:
         return info.hidden_size
     raise ValueError(
-        "No se pudo determinar d_model: no hay override explícito y el modelo "
-        "no declara config.hidden_size ni config.d_model. Pásalo con "
-        "hidden_size=... No se infiere de la forma de los pesos."
+        "Could not determine d_model: no explicit override was given and the "
+        "model declares neither config.hidden_size nor config.d_model. Pass "
+        "hidden_size=... It is never inferred from weight shapes."
     )
 
 
@@ -48,31 +48,36 @@ def resolve_layers(spec: LayersSpec, length: int) -> Tuple[int, ...]:
         return tuple(range(length))
 
     if isinstance(spec, bool):
-        raise ValueError(f"layers no admite un booleano, recibido {spec!r}")
+        raise ValueError(f"layers does not accept a boolean, got {spec!r}")
 
     if isinstance(spec, int):
         if not 0 < spec <= length:
             raise ValueError(
-                f"layers={spec} fuera de rango: debe cumplir 0 < N <= {length}"
+                f"layers={spec} is out of range: it must satisfy 0 < N <= {length}"
             )
         return tuple(range(spec))
 
     if isinstance(spec, (list, tuple)):
         if len(spec) == 0:
-            raise ValueError("layers no puede ser una secuencia vacía")
+            raise ValueError("layers cannot be an empty sequence")
         for i in spec:
             if isinstance(i, bool) or not isinstance(i, int):
-                raise ValueError(f"índice de capa no entero: {i!r}")
+                raise ValueError(f"non-integer layer index: {i!r}")
             if i < 0:
-                raise ValueError(f"índice de capa negativo: {i}. No se admite indexación desde el final")
+                raise ValueError(
+                    f"negative layer index: {i}. Indexing from the end is not supported"
+                )
             if i >= length:
-                raise ValueError(f"índice de capa {i} fuera de rango: el contenedor tiene {length} bloques")
+                raise ValueError(
+                    f"layer index {i} is out of range: the container holds {length} blocks"
+                )
         if len(set(spec)) != len(spec):
-            raise ValueError(f"layers contiene índices duplicados: {list(spec)}")
+            raise ValueError(f"layers contains duplicate indices: {list(spec)}")
         return tuple(sorted(spec))
 
     raise ValueError(
-        f"layers debe ser None, un entero o una secuencia de enteros; recibido {type(spec).__name__}"
+        f"layers must be None, an integer or a sequence of integers; got "
+        f"{type(spec).__name__}"
     )
 
 
@@ -88,19 +93,19 @@ def resolve_container(info: ModelInfo, target_modules: Optional[str]) -> Candida
         exact = [c for c in info.candidates if c.path == target_modules]
         if not exact:
             raise ValueError(
-                f"target_modules={target_modules!r} no corresponde a ningún "
-                "nn.ModuleList homogéneo del modelo. Candidatos:\n"
-                + (_describe(info.candidates) or "  (ninguno)")
+                f"target_modules={target_modules!r} does not match any "
+                "homogeneous nn.ModuleList in the model. Candidates:\n"
+                + (_describe(info.candidates) or "  (none)")
             )
         return exact[0]
 
     if not info.candidates:
         raise ValueError(
-            "No se encontró ningún nn.ModuleList homogéneo. Indica el "
-            "contenedor con target_modules=..."
+            "No homogeneous nn.ModuleList was found. Point at the container "
+            "with target_modules=..."
         )
 
-    # Criterios estructurales, en orden. Ninguno usa el nombre del path.
+    # Structural criteria, in order. None of them uses the path name.
     viable = [c for c in info.candidates if not c.is_nested]
     if any(c.touches_hidden_size for c in viable):
         viable = [c for c in viable if c.touches_hidden_size]
@@ -109,9 +114,9 @@ def resolve_container(info: ModelInfo, target_modules: Optional[str]) -> Candida
         return viable[0]
 
     raise ValueError(
-        "La resolución automática es ambigua: hay "
-        f"{len(viable)} contenedores estructuralmente equivalentes. "
-        "Elige uno con target_modules=...\n" + _describe(viable)
+        "Automatic resolution is ambiguous: there are "
+        f"{len(viable)} structurally equivalent containers. "
+        "Pick one with target_modules=...\n" + _describe(viable)
     )
 
 
@@ -122,8 +127,8 @@ def resolve_target(
     hidden_size: Optional[int] = None,
     target_modules: Optional[str] = None,
 ) -> ResolvedTarget:
-    # El contenedor primero: si el modelo no tiene una pila de bloques, ese
-    # es el problema que hay que reportar, no la dimensión.
+    # Container first: if the model has no block stack, that is the problem
+    # worth reporting, not the dimension.
     candidate = resolve_container(info, target_modules)
     resolved_hidden = resolve_hidden_size(info, hidden_size)
     indices = resolve_layers(layers, candidate.length)

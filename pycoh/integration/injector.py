@@ -1,10 +1,10 @@
 """
-pycoh.integration.injector — el único componente que muta el grafo.
+pycoh.integration.injector -- the only component that mutates the graph.
 
-No toma decisiones topológicas: recibe un `ResolvedTarget` y lo aplica.
-La inyección es atómica: se construyen todos los wrappers primero y solo
-después se reasignan, de modo que un fallo a mitad de camino no deja el
-modelo en un estado híbrido.
+It makes no topological decisions: it receives a `ResolvedTarget` and
+applies it. Injection is atomic -- every wrapper is built first and only
+then assigned, so a failure halfway through never leaves the model in a
+hybrid state.
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ LayersSpec = Union[None, int, Sequence[int]]
 
 def _module_device(module: nn.Module) -> Optional[torch.device]:
     """
-    Dispositivo donde vive un módulo, o None si no tiene tensores.
+    Device a module lives on, or None if it holds no tensors.
 
-    Cada CoH se crea donde está el bloque que envuelve, no donde esté el
-    resto del modelo. Con un modelo repartido entre varias GPUs, cada
-    adaptador aterriza junto a su bloque.
+    Each CoH is created where its wrapped block lives, not where the rest of
+    the model lives. With a model sharded across several GPUs, every adapter
+    lands next to its own block.
     """
     for tensor in list(module.parameters()) + list(module.buffers()):
         return tensor.device
@@ -45,14 +45,15 @@ def inject_coh(
     r_max: float = 0.98,
     trainable_beta: bool = False,
 ) -> int:
-    """Sustituye los bloques seleccionados por wrappers. Devuelve cuántos."""
+    """Replace the selected blocks with wrappers. Returns how many."""
     wrappers = {}
     for idx in target.block_indices:
         original = target.container[idx]
         if isinstance(original, CoHBlockWrapper):
             raise RuntimeError(
-                f"el bloque {target.path}[{idx}] ya está envuelto por CoH"
+                f"block {target.path}[{idx}] is already wrapped by CoH"
             )
+
         coh = CoH(
             d_model=target.hidden_size,
             d_tau=d_tau,
@@ -61,16 +62,16 @@ def inject_coh(
             trainable_beta=trainable_beta,
         )
 
-        # El dispositivo se hereda del bloque; el dtype NO. CoH se queda en
-        # FP32 aunque la base esté en bf16 o fp16, que es justamente la
-        # política de precisión del núcleo.
+        # The device is inherited from the block; the dtype is NOT. CoH stays
+        # in FP32 even when the base model is in bf16 or fp16, which is
+        # precisely the core's precision policy.
         device = _module_device(original)
         if device is not None:
             coh = coh.to(device)
 
         wrappers[idx] = CoHBlockWrapper(original, coh)
 
-    # Mutación solo después de haber construido todo.
+    # Mutate only after everything has been built.
     for idx, wrapper in wrappers.items():
         target.container[idx] = wrapper
     return len(wrappers)
@@ -78,11 +79,10 @@ def inject_coh(
 
 def freeze_base(model: nn.Module) -> None:
     """
-    Congela todo lo que no pertenezca a un CoH, por estructura y no por
-    nombre. Los parámetros de CoH se dejan exactamente como los construyó
-    el núcleo, de modo que `beta` conserva el `requires_grad` que fijó
-    `trainable_beta`: recorrer todo poniendo False y después reactivar a
-    mano borraría esa intención.
+    Freeze everything that does not belong to a CoH, structurally rather
+    than by name. CoH parameters are left exactly as the core built them, so
+    `beta` keeps the `requires_grad` set by `trainable_beta`: sweeping
+    everything to False and re-enabling afterwards would erase that intent.
     """
     coh_params = {
         id(p)
@@ -108,22 +108,22 @@ def apply_coh(
     freeze: bool = True,
 ) -> nn.Module:
     """
-    Aplica CoH a un modelo, in-place, y devuelve el mismo objeto.
+    Apply CoH to a model, in place, and return the same object.
 
-    Orquesta inspeccionar → resolver → validar → inyectar → congelar.
-    Ante arquitectura no soportada, dimensión no resoluble, índices
-    inválidos, ambigüedad o doble inyección, lanza una excepción sin dejar
-    el modelo parcialmente modificado.
+    Orchestrates inspect -> resolve -> validate -> inject -> freeze. On an
+    unsupported architecture, an unresolvable dimension, invalid indices,
+    ambiguity or double injection it raises without leaving the model
+    partially modified.
 
-    `d_tau` es obligatorio: no existe un valor automático.
+    `d_tau` is required: there is no automatic value.
     """
     info = inspect_model(model)
 
     if info.already_injected:
         raise RuntimeError(
-            "El modelo ya tiene CoH aplicado en: "
+            "The model already has CoH applied at: "
             + ", ".join(info.injected_paths)
-            + ". Una segunda aplicación produciría wrappers anidados."
+            + ". A second application would produce nested wrappers."
         )
 
     target = resolve_target(
@@ -149,24 +149,24 @@ def apply_coh(
 
 def remove_coh(model: nn.Module, *, unfreeze: bool = False) -> nn.Module:
     """
-    Desinstala CoH y restaura la topología original, in-place.
+    Uninstall CoH and restore the original topology, in place.
 
-    Cada `CoHBlockWrapper` se sustituye por el bloque que envolvía — el
-    mismo objeto, no una copia — de modo que `named_modules()` y
-    `state_dict()` vuelven a ser exactamente los del modelo limpio y las
-    APIs normales de HuggingFace (`save_pretrained`) vuelven a funcionar.
+    Every `CoHBlockWrapper` is replaced by the block it wrapped -- the same
+    object, not a copy -- so `named_modules()` and `state_dict()` go back to
+    exactly what the clean model had and the standard HuggingFace APIs
+    (`save_pretrained`) work again.
 
-    No restaura pesos: el modelo base nunca se modificó, así que no hay
-    nada que restaurar. El estado de CoH se pierde salvo que se haya
-    guardado antes con `save_adapter`.
+    It restores no weights: the base model was never modified, so there is
+    nothing to restore. CoH state is lost unless it was saved beforehand
+    with `save_adapter`.
 
-    `requires_grad` **no se toca** por defecto. `apply_coh` congeló la base
-    y aquí no se sabe cuál era el estado previo, así que adivinarlo sería
-    peor que dejarlo explícito: pasa `unfreeze=True` para reactivar todos
-    los parámetros restantes.
+    `requires_grad` is left untouched by default. `apply_coh` froze the base
+    and there is no record of the previous state here, so guessing would be
+    worse than being explicit: pass `unfreeze=True` to re-enable every
+    remaining parameter.
 
-    Lanza `RuntimeError` si el modelo no tiene CoH: quitar algo que no está
-    es casi siempre un error de quien llama, no una operación vacía.
+    Raises `RuntimeError` if the model has no CoH: removing something that
+    is not there is almost always a caller error, not a no-op.
     """
     removed = 0
     for parent in list(model.modules()):
@@ -176,9 +176,7 @@ def remove_coh(model: nn.Module, *, unfreeze: bool = False) -> nn.Module:
                 removed += 1
 
     if removed == 0:
-        raise RuntimeError(
-            "El modelo no tiene CoH aplicado: no hay nada que quitar."
-        )
+        raise RuntimeError("The model has no CoH applied: there is nothing to remove.")
 
     if unfreeze:
         for p in model.parameters():

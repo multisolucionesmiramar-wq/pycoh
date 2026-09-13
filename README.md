@@ -1,8 +1,10 @@
 # PyCoH
 
-Adaptador de ajuste fino eficiente en parámetros para transformers. Inyecta
-una corrección direccional en el residual stream de cada bloque, con el
-modelo base completamente congelado.
+*English · [Español](README.es.md)*
+
+Parameter-efficient fine-tuning adapter for transformers. It injects a
+directional correction into the residual stream of every block, with the
+base model fully frozen.
 
 ```python
 from transformers import AutoModelForCausalLM
@@ -11,213 +13,212 @@ from pycoh import apply_coh, remove_coh, save_adapter, load_adapter
 model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM2-360M").cuda()
 apply_coh(model, d_tau=96)
 
-# ...tu bucle de entrenamiento habitual...
+# ...your usual training loop...
 
-save_adapter(model, "mi_adaptador.pt")
+save_adapter(model, "my_adapter.pt")
 ```
 
-Para reutilizarlo sobre una instancia limpia del mismo modelo base:
+To reuse it on a clean instance of the same base model:
 
 ```python
 model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM2-360M").cuda()
 apply_coh(model, d_tau=96)
-load_adapter(model, "mi_adaptador.pt")
+load_adapter(model, "my_adapter.pt")
 ```
 
-El ciclo de vida completo es simétrico:
+The lifecycle is symmetric:
 
 ```
-apply_coh     instalar el adaptador
-remove_coh    desinstalarlo y restaurar la topología
-save_adapter  persistirlo
-load_adapter  restaurarlo
+apply_coh     install the adapter
+remove_coh    uninstall it and restore the topology
+save_adapter  persist it
+load_adapter  restore it
 ```
 
 ---
 
-## Qué hace
+## What it does
 
-Para el estado oculto `h` a la entrada de cada bloque:
+For the hidden state `h` entering each block:
 
 ```
-z  = W_τ h                    comprime a d_τ dimensiones
-r  = min(σ(φ(z)), r_max)      compuerta por token, con techo
-s  = 1/√(1 − r²) − 1          amplitud
-Ĵ  = normalize(W_o z)         dirección, de norma unitaria
-Δh = β · Ĵ · s
-h' = B(h) + Δh
+z  = W_tau h                  compress to d_tau dimensions
+r  = min(sigmoid(phi(z)), r_max)   per-token gate, with a ceiling
+s  = 1/sqrt(1 - r^2) - 1      amplitude
+J  = normalize(W_out z)       direction, unit norm
+dh = beta * J * s
+h' = B(h) + dh
 ```
 
-La corrección se calcula sobre la **entrada** del bloque, no sobre su
-salida. La dirección depende del estado actual; su norma es siempre 1, de
-modo que la amplitud queda desacoplada de la magnitud del estado. El techo
-`r_max` acota `s` a 4.0252 e impide la divergencia de `1/√(1−r²)`.
+The correction is computed from the block's **input**, not from its output.
+The direction depends on the current state; its norm is always 1, so the
+amplitude is decoupled from the magnitude of the state. The ceiling `r_max`
+bounds `s` at 4.0252 and prevents `1/sqrt(1-r^2)` from diverging.
 
-Parámetros entrenables por capa: `2·d_model·d_τ + d_τ`.
+Trainable parameters per layer: `2 * d_model * d_tau + d_tau`.
 
-## Números medidos
+## Measured numbers
 
-Sobre `SmolLM2-360M` con `d_tau=96`, 32 capas:
+On `SmolLM2-360M` with `d_tau=96`, 32 layers:
 
 | | |
 |---|---|
-| Parámetros del adaptador | 5 901 344 (1.6% del modelo) |
-| Entrenables por defecto | 5 901 312 |
-| Tamaño del archivo | 23.6 MB (frente a 724 MB del modelo) |
-| Modelo base modificado | 0 tensores, verificado tras entrenar |
+| Adapter parameters | 5,901,344 (1.6% of the model) |
+| Trainable by default | 5,901,312 |
+| File size | 23.6 MB (against 724 MB for the model) |
+| Base model modified | 0 tensors, verified after training |
 
-Verificado en ejecución sobre T4: `Trainer` de HuggingFace, base en
-`bfloat16`, gradient checkpointing activo, guardado y recarga del adaptador
-sobre un modelo recién descargado reproduciendo la pérdida.
+Verified by execution on a T4: HuggingFace `Trainer`, base in `bfloat16`,
+gradient checkpointing enabled, adapter saved and reloaded onto a freshly
+downloaded model reproducing the loss.
 
-**PyCoH no publica todavía ninguna medición de rendimiento.** No hay
-comparación contra LoRA ni contra ajuste fino completo en este repositorio.
-Lo que está verificado es que el mecanismo se aplica, entrena, se guarda y
-se recarga correctamente.
+**PyCoH does not yet publish any performance measurement.** There is no
+comparison against LoRA or full fine-tuning in this repository. What is
+verified is that the mechanism applies, trains, saves and reloads
+correctly.
 
-## Precisión numérica
+## Numerical precision
 
-Toda la aritmética del núcleo corre en FP32, y el resultado se devuelve en
-el dtype de entrada. Esto se mantiene **bajo precisión mixta sin que haya
-que configurar nada**: `torch.autocast` convierte las entradas de las
-operaciones lineales a precisión baja sin importar el dtype que se les
-pase, así que el núcleo desactiva autocast internamente. Un modelo base en
-`bfloat16` con un adaptador en FP32 es la configuración normal y funciona
-sola.
+All core arithmetic runs in FP32 and the result is returned in the input
+dtype. This holds **under mixed precision with no configuration on your
+part**: `torch.autocast` casts the inputs of linear operations down to low
+precision regardless of the dtype it is given, so the core disables
+autocast internally. A base model in `bfloat16` with an FP32 adapter is the
+normal setup and it works on its own.
 
-## Limitaciones
+## Limitations
 
-Están documentadas porque son propiedades del diseño, no defectos por
-corregir.
+These are documented because they are design properties, not defects
+awaiting a fix.
 
-**No se puede fusionar en los pesos.** `Δh` es función de la activación,
-no un delta de pesos, así que no existe `merge_and_unload()`. A diferencia
-de LoRA, el costo se paga en cada forward. El sobrecosto de latencia
-todavía no se ha medido y no se declara.
+**It cannot be merged into the weights.** `dh` is a function of the
+activation, not a weight delta, so there is no `merge_and_unload()`.
+Unlike LoRA, the cost is paid on every forward pass. The latency overhead
+has not been measured and is not claimed.
 
-**`apply_coh()` no es la identidad al inicializar.** `out_proj` arranca
-con el init por defecto de PyTorch, así que la corrección es no nula desde
-el primer forward. En SmolLM2-360M eso produce un cambio máximo en los
-logits de ~0.65 antes de entrenar. Quien venga de LoRA espera lo contrario.
+**`apply_coh()` is not the identity at initialization.** `out_proj` starts
+from PyTorch's default init, so the correction is non-zero from the first
+forward pass. On SmolLM2-360M that produces a maximum logit change of about
+0.65 before any training. Anyone coming from LoRA expects the opposite.
 
-Inicializar `out_proj` a cero **no** es la solución: `F.normalize` divide
-por `‖x‖.clamp_min(eps)`, de modo que en el origen la derivada vale
-`1/eps ≈ 1e12`. Medido: norma de gradiente `2.18e12` en cuanto el gradiente
-que llega desde arriba es no nulo. Conseguir identidad al inicio exige otro
-diseño y queda para una versión posterior.
+Initializing `out_proj` to zero is **not** the fix: `F.normalize` divides
+by `||x||.clamp_min(eps)`, so at the origin the derivative is
+`1/eps ~ 1e12`. Measured: gradient norm `2.18e12` as soon as the incoming
+gradient is non-zero. Achieving identity at initialization requires a
+different design and is left for a later version.
 
-**`save_pretrained()` no funciona mientras CoH está instalado.** Al
-envolver cada bloque, las claves pasan de `model.layers.3.self_attn...` a
-`model.layers.3.block.self_attn...`, así que `from_pretrained` ya no puede
-reconstruirlo. Por eso el adaptador se guarda aparte con `save_adapter`. Si
-necesitás el checkpoint base, `remove_coh(model)` restaura la topología
-original y `save_pretrained` vuelve a funcionar.
+**`save_pretrained()` does not work while CoH is installed.** Wrapping each
+block shifts the keys from `model.layers.3.self_attn...` to
+`model.layers.3.block.self_attn...`, so `from_pretrained` can no longer
+rebuild it. That is why the adapter is saved separately with
+`save_adapter`. If you need the base checkpoint, `remove_coh(model)`
+restores the original topology and `save_pretrained` works again.
 
-**`d_tau` es obligatorio y no tiene valor por defecto.** La única
-proporción con respaldo empírico es `d_tau/d_model = 0.1`, medida en
-`d_model=960`. Extrapolarla a otros tamaños es una hipótesis, no una regla,
-y la librería no la aplica en silencio.
+**`d_tau` is required and has no default.** The only ratio with empirical
+support is `d_tau/d_model = 0.1`, measured at `d_model=960`. Extrapolating
+it to other sizes is a hypothesis, not a rule, and the library does not
+apply it silently.
 
-**`trainable_beta=True` y weight decay.** Si activás `beta` como
-parámetro entrenable y lo metés en un grupo de AdamW con `weight_decay`,
-`beta` recibe decaimiento. Medido en una tarea de juguete a 150 pasos:
-`0.5 → 1.0255` sin weight decay, `0.5 → 0.9743` con el 0.01 por defecto.
-Es una deriva modesta, no un colapso, pero en entrenamientos largos
-conviene darle a `beta` su propio grupo con `weight_decay=0.0`.
+**`trainable_beta=True` and weight decay.** If you make `beta` trainable
+and put it in an AdamW group with `weight_decay`, `beta` decays. Measured
+on a toy task over 150 steps: `0.5 -> 1.0255` without weight decay,
+`0.5 -> 0.9743` with the default 0.01. That is a modest drift, not a
+collapse, but over long runs `beta` deserves its own group with
+`weight_decay=0.0`.
 
 ## API
 
 ### `apply_coh(model, *, d_tau, ...)`
 
-Aplica CoH **in-place** y devuelve el mismo objeto. Descubre la pila de
-bloques por estructura, no por nombres: busca `nn.ModuleList` homogéneos,
-descarta los anidados dentro de otros candidatos y verifica que los
-parámetros del bloque operen sobre `d_model`. **Si hay ambigüedad, falla**
-y enumera los candidatos; nunca elige por su cuenta.
+Applies CoH **in place** and returns the same object. It discovers the
+block stack structurally, not by name: it looks for homogeneous
+`nn.ModuleList` containers, discards the ones nested inside other
+candidates, and checks that the block's parameters operate on `d_model`.
+**On ambiguity it fails** and lists the candidates; it never decides on its
+own.
 
-| Argumento | Por defecto | |
+| Argument | Default | |
 |---|---|---|
-| `d_tau` | — | obligatorio |
-| `layers` | `None` | `None`=todas, `N`=las primeras N, `[i,j]`=índices |
-| `hidden_size` | `None` | override; si no, `config.hidden_size` o `config.d_model` |
-| `target_modules` | `None` | ruta exacta del contenedor, para resolver ambigüedad |
+| `d_tau` | — | required |
+| `layers` | `None` | `None`=all, `N`=first N, `[i,j]`=indices |
+| `hidden_size` | `None` | override; otherwise `config.hidden_size` or `config.d_model` |
+| `target_modules` | `None` | exact container path, to resolve ambiguity |
 | `beta_init` | `0.5` | |
 | `r_max` | `0.98` | |
 | `trainable_beta` | `False` | |
-| `freeze` | `True` | congela todo lo que no sea CoH |
+| `freeze` | `True` | freezes everything that is not CoH |
 
-Cada adaptador se crea en el dispositivo de su bloque, así que un modelo
-repartido entre varias GPUs funciona sin ajustes. El dtype no se hereda:
-CoH permanece en FP32.
+Each adapter is created on its own block's device, so a model sharded
+across several GPUs works without adjustment. The dtype is not inherited:
+CoH stays in FP32.
 
-Una segunda llamada sobre un modelo ya inyectado lanza `RuntimeError`. Ante
-cualquier error de validación el modelo queda **intacto**: se construyen
-todos los wrappers antes de colocar el primero.
+A second call on an already-injected model raises `RuntimeError`. On any
+validation error the model is left **untouched**: every wrapper is built
+before the first one is installed.
 
 ### `remove_coh(model, *, unfreeze=False)`
 
-Desinstala CoH y restaura la topología original, in-place. Cada wrapper se
-sustituye por el mismo objeto de bloque que envolvía, de modo que
-`named_modules()` y `state_dict()` vuelven a ser exactamente los del modelo
-limpio.
+Uninstalls CoH and restores the original topology, in place. Each wrapper
+is replaced by the very block object it wrapped, so `named_modules()` and
+`state_dict()` go back to exactly what the clean model had.
 
-No restaura pesos: el modelo base nunca se modificó. El estado de CoH se
-pierde salvo que se haya guardado antes con `save_adapter`.
+It restores no weights: the base model was never modified. CoH state is
+lost unless it was saved beforehand with `save_adapter`.
 
-`requires_grad` no se toca: `apply_coh` congeló la base y aquí no se sabe
-cuál era el estado previo, así que adivinarlo sería peor que dejarlo
-explícito. `unfreeze=True` reactiva todos los parámetros restantes.
+`requires_grad` is left untouched: `apply_coh` froze the base and there is
+no record of the previous state here, so guessing would be worse than being
+explicit. `unfreeze=True` re-enables every remaining parameter.
 
-Sobre un modelo sin CoH lanza `RuntimeError`.
+On a model without CoH it raises `RuntimeError`.
 
 ### `save_adapter(model, path)` / `load_adapter(model, path)`
 
-El archivo contiene exclusivamente el estado de los módulos CoH —ni un solo
-peso del huésped— más metadatos: versión de formato, mecanismo, `d_model`,
-`d_tau`, `r_max`, `trainable_beta` y la lista de rutas inyectadas.
+The file holds the state of the CoH modules and nothing else — not a single
+host weight — plus metadata: format version, mechanism, `d_model`,
+`d_tau`, `r_max`, `trainable_beta` and the list of injected paths.
 
-`load_adapter` exige que el modelo **ya** tenga CoH aplicado; no modifica la
-topología. Valida mecanismo, versión, rutas, `d_model`, `d_tau`, `r_max`,
-claves y formas **antes** de escribir un solo tensor, así que un adaptador
-incompatible no deja el modelo a medio cargar. Nunca usa `strict=False`.
+`load_adapter` requires the model to **already** have CoH applied; it does
+not change the topology. It validates mechanism, version, paths, `d_model`,
+`d_tau`, `r_max`, keys and shapes **before** writing a single tensor, so an
+incompatible adapter never leaves the model half-loaded. It never uses
+`strict=False`.
 
-`r_max` se valida explícitamente porque no altera ninguna forma: sin esa
-comprobación, un adaptador entrenado con otro techo se cargaría sin error y
-el mecanismo se comportaría distinto en silencio.
+`r_max` is validated explicitly because it changes no shape: without that
+check, an adapter trained under a different ceiling would load without
+error and the mechanism would behave differently in silence.
 
-La deserialización usa `weights_only=True`. Los checkpoints de PyTorch
-ejecutan código al abrirse; un adaptador descargado de internet no debería
-poder hacerlo.
+Deserialization uses `weights_only=True`. PyTorch checkpoints execute code
+when opened; an adapter downloaded from the internet should not be able to.
 
-`trainable_beta` en el archivo es informativo: describe cómo se entrenó el
-adaptador y no cambia la configuración del modelo receptor. El valor de
-`beta`, en cambio, sí se restaura desde el archivo.
+`trainable_beta` in the file is informational: it describes how the adapter
+was trained and does not change the receiving model's configuration. The
+value of `beta`, by contrast, is restored from the file.
 
-## Compatibilidad
+## Compatibility
 
-Requiere que el modelo tenga una lista homogénea de bloques, que esos
-bloques reciban el estado como primer argumento y devuelvan un `Tensor` o
-una `tuple`, y que declare su dimensión en el config.
+Requires the model to have a homogeneous list of blocks, those blocks to
+take the hidden state as their first argument and return a `Tensor` or a
+`tuple`, and the config to declare the hidden size.
 
-Verificado sobre `SmolLM2-360M` con `transformers 5.16`, `torch 2.11` y
-`2.14`. Los modelos codificador-decodificador tienen dos pilas y exigen
-`target_modules` explícito. Los modelos que declaran la dimensión como
-`n_embd` (familia GPT-2) requieren pasar `hidden_size` a mano.
+Verified on `SmolLM2-360M` with `transformers 5.16`, `torch 2.11` and
+`2.14`. Encoder-decoder models have two stacks and require an explicit
+`target_modules`. Models declaring the dimension as `n_embd` (the GPT-2
+family) need `hidden_size` passed by hand.
 
-Una salida de bloque que no sea `Tensor` ni `tuple` produce `TypeError`
-explícito: la librería no adivina cuál campo de un `dict` es el estado
-oculto.
+A block output that is neither a `Tensor` nor a `tuple` raises an explicit
+`TypeError`: the library does not guess which field of a `dict` holds the
+hidden state.
 
-## Instalación
+## Installation
 
 ```bash
 pip install pycoh
 ```
 
-Desde el repositorio:
+From the repository:
 
 ```bash
-git clone <repo> && cd pycoh
+git clone https://github.com/multisolucionesmiramar-wq/pycoh && cd pycoh
 pip install -e ".[dev]"
 pytest -q
 ```
@@ -225,12 +226,12 @@ pytest -q
 ## Tests
 
 ```bash
-pytest -q                                          # suite completa
-python tests/diagnostics/zero_init_probe.py        # diagnóstico
-PYTHONPATH=. python tests/integration/smollm2_run.py    # requiere red
-PYTHONPATH=. python tests/integration/smollm2_train.py  # requiere red y GPU
+pytest -q                                          # full suite
+python tests/diagnostics/zero_init_probe.py        # diagnostic
+PYTHONPATH=. python tests/integration/smollm2_run.py    # needs network
+PYTHONPATH=. python tests/integration/smollm2_train.py  # needs network and GPU
 ```
 
-Los tests del núcleo comparan cada etapa del cálculo **bit a bit** contra
-una referencia escrita desde la especificación, que no llama al código bajo
-prueba.
+Core tests compare every stage of the computation **bit for bit** against a
+reference written from the specification, which never calls the code under
+test.

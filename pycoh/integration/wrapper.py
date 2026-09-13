@@ -1,11 +1,12 @@
 """
-pycoh.integration.wrapper — composición de CoH con un bloque huésped.
+pycoh.integration.wrapper -- composing CoH with a host block.
 
     h' = B(h) + CoH(h)
 
-La corrección se calcula sobre la ENTRADA del bloque, no sobre su salida.
-El wrapper es deliberadamente tonto: recibe un bloque ya resuelto, no
-descubre nada, no resuelve capas, no congela parámetros y no serializa.
+The correction is computed from the block's input, not from its output.
+The wrapper is deliberately dumb: it receives an already-resolved block, it
+discovers nothing, resolves nothing, freezes nothing and serializes
+nothing.
 """
 
 from __future__ import annotations
@@ -24,29 +25,29 @@ def _is_namedtuple(obj) -> bool:
 
 class CoHBlockWrapper(nn.Module):
     """
-    Envuelve un bloque de transformer y le suma la corrección de CoH.
+    Wrap a transformer block and add the CoH correction to its output.
 
-    Contrato de la salida del bloque huésped:
+    Contract for the host block's output:
 
-    - `Tensor`  → devuelve `out + delta`.
-    - `tuple`   → devuelve `(out[0] + delta,) + out[1:]`, conservando las
-                  referencias exactas de `out[1:]`. Si es un `namedtuple`,
-                  se reconstruye con su mismo tipo.
-    - cualquier otro tipo → `TypeError`. No se adivina cuál de los campos
-      de un `dict` o un `ModelOutput` es el hidden state.
+    - `Tensor` -> returns `out + delta`.
+    - `tuple`  -> returns `(out[0] + delta,) + out[1:]`, preserving the
+                  exact references in `out[1:]`. A `namedtuple` is rebuilt
+                  with its own type.
+    - anything else -> `TypeError`. The library does not guess which field
+      of a `dict` or a `ModelOutput` holds the hidden state.
 
-    Todos los `*args` y `**kwargs` se reenvían al bloque sin tocar. El
-    hidden state se toma del primer posicional o del kwarg
-    `hidden_states`, lo que permite tanto la llamada posicional del
-    gradient checkpointing como la llamada por nombre de HuggingFace.
+    All `*args` and `**kwargs` are forwarded to the block untouched. The
+    hidden state is taken from the first positional argument or from the
+    `hidden_states` keyword, which supports both the positional call used
+    by gradient checkpointing and the keyword call used by HuggingFace.
     """
 
     def __init__(self, block: nn.Module, coh: CoH) -> None:
         super().__init__()
         if not isinstance(block, nn.Module):
-            raise TypeError(f"block debe ser nn.Module, recibido {type(block).__name__}")
+            raise TypeError(f"block must be an nn.Module, got {type(block).__name__}")
         if not isinstance(coh, CoH):
-            raise TypeError(f"coh debe ser CoH, recibido {type(coh).__name__}")
+            raise TypeError(f"coh must be a CoH, got {type(coh).__name__}")
         self.block = block
         self.coh = coh
 
@@ -58,12 +59,12 @@ class CoHBlockWrapper(nn.Module):
             hidden = kwargs["hidden_states"]
         else:
             raise TypeError(
-                "CoHBlockWrapper no encontró el hidden state: pásalo como "
-                "primer argumento posicional o como kwarg 'hidden_states'"
+                "CoHBlockWrapper could not find the hidden state: pass it as "
+                "the first positional argument or as the 'hidden_states' keyword"
             )
         if not torch.is_tensor(hidden):
             raise TypeError(
-                f"el hidden state debe ser un Tensor, recibido {type(hidden).__name__}"
+                f"the hidden state must be a Tensor, got {type(hidden).__name__}"
             )
         return hidden
 
@@ -73,12 +74,12 @@ class CoHBlockWrapper(nn.Module):
 
         if isinstance(out, tuple):
             if len(out) == 0:
-                raise TypeError("el bloque devolvió una tupla vacía")
+                raise TypeError("the block returned an empty tuple")
             head = out[0]
             if not torch.is_tensor(head):
                 raise TypeError(
-                    "el primer elemento de la tupla debe ser el hidden state "
-                    f"(Tensor), recibido {type(head).__name__}"
+                    "the first element of the tuple must be the hidden state "
+                    f"(Tensor), got {type(head).__name__}"
                 )
             corrected = (head + delta,) + tuple(out[1:])
             if _is_namedtuple(out):
@@ -86,9 +87,9 @@ class CoHBlockWrapper(nn.Module):
             return corrected
 
         raise TypeError(
-            "CoHBlockWrapper solo admite bloques que devuelvan Tensor o "
-            f"tuple; recibido {type(out).__name__}. Envuelve el bloque en un "
-            "adaptador que exponga el hidden state explícitamente."
+            "CoHBlockWrapper only supports blocks returning a Tensor or a "
+            f"tuple; got {type(out).__name__}. Wrap the block in an adapter "
+            "that exposes the hidden state explicitly."
         )
 
     def forward(self, *args, **kwargs):

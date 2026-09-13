@@ -138,7 +138,7 @@ def test_resolver_picks_outermost_unambiguous():
 
 def test_resolver_rejects_ambiguity():
     info = inspect_model(TwoStackModel())
-    with pytest.raises(ValueError, match="ambigua"):
+    with pytest.raises(ValueError, match="ambiguous"):
         resolve_target(info)
     # con override explícito sí resuelve
     assert resolve_target(info, target_modules="stack_b").path == "stack_b"
@@ -151,7 +151,7 @@ def test_resolver_rejects_unknown_target_modules():
 
 def test_resolver_requires_hidden_size():
     info = inspect_model(TinyModel(declare=None))
-    with pytest.raises(ValueError, match="No se pudo determinar d_model"):
+    with pytest.raises(ValueError, match="Could not determine d_model"):
         resolve_target(info)
     assert resolve_target(info, hidden_size=D_MODEL).hidden_size == D_MODEL
 
@@ -187,7 +187,7 @@ def test_apply_coh_returns_same_object():
 
 def test_double_injection_rejected():
     model = apply_coh(TinyModel(), d_tau=D_TAU)
-    with pytest.raises(RuntimeError, match="ya tiene CoH"):
+    with pytest.raises(RuntimeError, match="already has CoH"):
         apply_coh(model, d_tau=D_TAU)
     # y la topología previa sigue intacta: un solo nivel de wrapper
     assert all(isinstance(m, CoHBlockWrapper) for m in model.layers)
