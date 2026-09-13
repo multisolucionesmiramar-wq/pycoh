@@ -1,25 +1,31 @@
 cff-version: 1.2.0
-title: "PyCoH: adaptador CoH para transformers"
-message: "Si usás este software, citalo como se indica aquí."
+title: "PyCoH: a CoH adapter for transformers"
+message: "If you use this software, please cite it as below."
 type: software
 authors:
   - family-names: "Ramírez Azofeifa"
     given-names: "Franklin Moisés"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"   ← completar
-repository-code: "https://github.com/USUARIO/pycoh"
+    orcid: "https://orcid.org/0009-0001-9121-974X"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.22738978"
+    description: "Release v0.1.0"
+repository-code: "https://github.com/multisolucionesmiramar-wq/pycoh"
 license: Apache-2.0
 version: 0.1.0
 date-released: "2026-09-13"
+doi: "10.5281/zenodo.22738978"
 keywords:
   - pytorch
   - transformers
   - parameter-efficient-fine-tuning
   - adapter
-# Fundamento teórico. Completar con los DOI reales de los preprints.
-# references:
-#   - type: article
-#     title: "..."
-#     authors:
-#       - family-names: "Ramírez Azofeifa"
-#         given-names: "Franklin Moisés"
-#     doi: "10.5281/zenodo.XXXXXXX"
+references:
+  - type: article
+    title: "Fisher-Rao Geometry as the Common Origin of Cosmological Bounces, Holographic Duality, and Geodesic Regularization: A Derivation from Cencov's Uniqueness Theorem"
+    authors:
+      - family-names: "Ramírez Azofeifa"
+        given-names: "Franklin Moisés"
+        orcid: "https://orcid.org/0009-0001-9121-974X"
+    year: 2026
+    doi: "10.5281/zenodo.19015001"
