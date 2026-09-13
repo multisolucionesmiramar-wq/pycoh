@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Ramírez Azofeifa"
     given-names: "Franklin Moisés"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"   ← completar
-repository-code: "https://github.com/USUARIO/pycoh"
+    # orcid: "https://orcid.org/0009-0001-9121-974X"
+repository-code: "https://github.com/multisolucionesmiramar-wq/pycoh"
 license: Apache-2.0
 version: 0.1.0
 date-released: "2026-09-13"
