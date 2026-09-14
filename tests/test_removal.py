@@ -71,13 +71,13 @@ def test_forward_equals_clean_model():
     ref = clean()
     ref.eval()
     with torch.no_grad():
-        esperado = ref(ids)
+        expected = ref(ids)
 
     m = injected()
     remove_coh(m)
     m.eval()
     with torch.no_grad():
-        assert torch.equal(m(ids), esperado)
+        assert torch.equal(m(ids), expected)
 
 
 def test_base_weights_intact_after_train_and_remove():
@@ -105,14 +105,14 @@ def test_adapter_saved_before_removal_still_loads(tmp_path):
     ids = fixed_batch()
     m.eval()
     with torch.no_grad():
-        objetivo = lm_loss(m, ids).item()
+        target_loss = lm_loss(m, ids).item()
 
     remove_coh(m)
     apply_coh(m, d_tau=D_TAU)
     load_adapter(m, f)
     m.eval()
     with torch.no_grad():
-        assert lm_loss(m, ids).item() == pytest.approx(objetivo, rel=1e-6)
+        assert lm_loss(m, ids).item() == pytest.approx(target_loss, rel=1e-6)
 
 
 # -- 3. partial selection and re-application -------------------------------

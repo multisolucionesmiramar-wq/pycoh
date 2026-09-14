@@ -339,17 +339,17 @@ def test_adapter_round_trip_across_devices(tmp_path):
     """Save from GPU, load on GPU: the file tensors travel through CPU."""
     from pycoh.integration.serialization import load_adapter, save_adapter
 
-    origen = apply_coh(TinyModel().cuda(), d_tau=D_TAU)
+    src = apply_coh(TinyModel().cuda(), d_tau=D_TAU)
     with torch.no_grad():
-        for w in origen.layers:
+        for w in src.layers:
             for p in w.coh.parameters():
                 p.copy_(torch.randn_like(p))
     f = tmp_path / "a.pt"
-    save_adapter(origen, f)
+    save_adapter(src, f)
 
-    destino = apply_coh(TinyModel().cuda(), d_tau=D_TAU)
-    load_adapter(destino, f)
-    for a, b in zip(origen.layers, destino.layers):
+    dest = apply_coh(TinyModel().cuda(), d_tau=D_TAU)
+    load_adapter(dest, f)
+    for a, b in zip(src.layers, dest.layers):
         for pa, pb in zip(a.coh.parameters(), b.coh.parameters()):
             assert pb.is_cuda
             assert torch.equal(pa, pb)

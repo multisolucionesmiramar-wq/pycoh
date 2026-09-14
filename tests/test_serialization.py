@@ -45,48 +45,48 @@ def randomize_coh(model):
 # -- 1. round-trip --------------------------------------------------------
 
 def test_round_trip_is_exact(tmp_path):
-    origen = injected()
-    randomize_coh(origen)
-    esperado = coh_state(origen)
+    src = injected()
+    randomize_coh(src)
+    expected = coh_state(src)
 
     f = tmp_path / "adapter.pt"
-    save_adapter(origen, f)
+    save_adapter(src, f)
 
-    destino = injected()
-    assert coh_state(destino) != esperado  # different weights before loading
-    load_adapter(destino, f)
+    dest = injected()
+    assert coh_state(dest) != expected  # different weights before loading
+    load_adapter(dest, f)
 
-    got = coh_state(destino)
-    assert set(got) == set(esperado)
-    for path in esperado:
-        for k in esperado[path]:
-            assert torch.equal(got[path][k], esperado[path][k]), f"{path}.{k}"
+    got = coh_state(dest)
+    assert set(got) == set(expected)
+    for path in expected:
+        for k in expected[path]:
+            assert torch.equal(got[path][k], expected[path][k]), f"{path}.{k}"
 
 
 def test_round_trip_reproduces_delta(tmp_path):
     """The round-trip is checked functionally too, not only by state."""
-    origen = injected()
-    randomize_coh(origen)
+    src = injected()
+    randomize_coh(src)
     h = torch.randn(2, 5, D_MODEL)
-    ref = [m.coh(h) for m in origen.layers]
+    ref = [m.coh(h) for m in src.layers]
 
     f = tmp_path / "adapter.pt"
-    save_adapter(origen, f)
-    destino = injected()
-    load_adapter(destino, f)
+    save_adapter(src, f)
+    dest = injected()
+    load_adapter(dest, f)
 
-    for esperado, m in zip(ref, destino.layers):
-        assert torch.equal(m.coh(h), esperado)
+    for expected, m in zip(ref, dest.layers):
+        assert torch.equal(m.coh(h), expected)
 
 
 def test_beta_value_prevails_over_beta_init(tmp_path):
-    origen = apply_coh(TinyModel(), d_tau=D_TAU, beta_init=0.73)
+    src = apply_coh(TinyModel(), d_tau=D_TAU, beta_init=0.73)
     f = tmp_path / "a.pt"
-    save_adapter(origen, f)
+    save_adapter(src, f)
 
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, beta_init=0.5)
-    load_adapter(destino, f)
-    for m in destino.layers:
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, beta_init=0.5)
+    load_adapter(dest, f)
+    for m in dest.layers:
         assert m.coh.beta.item() == pytest.approx(0.73)
 
 
@@ -158,25 +158,25 @@ def test_topology_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 1]), f)
 
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
     with pytest.raises(RuntimeError, match="adapter topology"):
-        load_adapter(destino, f)
+        load_adapter(dest, f)
 
 
 def test_layer_count_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU), f)
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, layers=2)
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, layers=2)
     with pytest.raises(RuntimeError, match="adapter topology"):
-        load_adapter(destino, f)
+        load_adapter(dest, f)
 
 
 def test_d_tau_mismatch_rejected(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU), f)
-    destino = apply_coh(TinyModel(), d_tau=D_TAU * 2)
+    dest = apply_coh(TinyModel(), d_tau=D_TAU * 2)
     with pytest.raises(RuntimeError, match="incompatible d_tau"):
-        load_adapter(destino, f)
+        load_adapter(dest, f)
 
 
 def test_r_max_mismatch_rejected(tmp_path):
@@ -187,9 +187,9 @@ def test_r_max_mismatch_rejected(tmp_path):
     """
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.98), f)
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.90)
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.90)
     with pytest.raises(RuntimeError, match="incompatible r_max"):
-        load_adapter(destino, f)
+        load_adapter(dest, f)
 
 
 @pytest.mark.parametrize(
@@ -247,55 +247,55 @@ def test_no_partial_load_on_bad_shape(tmp_path):
     validation the model must be untouched: not even layer 0 is written.
     """
     f = tmp_path / "a.pt"
-    origen = injected()
-    randomize_coh(origen)
-    save_adapter(origen, f)
+    src = injected()
+    randomize_coh(src)
+    save_adapter(src, f)
 
     payload = torch.load(f, map_location="cpu", weights_only=True)
     payload["state_dict"]["layers.3.W_tau.weight"] = torch.randn(D_TAU + 1, D_MODEL)
     torch.save(payload, f)
 
-    destino = injected()
-    antes = coh_state(destino)
+    dest = injected()
+    before = coh_state(dest)
     with pytest.raises(RuntimeError, match="incompatible shape"):
-        load_adapter(destino, f)
+        load_adapter(dest, f)
 
-    despues = coh_state(destino)
-    for path in antes:
-        for k in antes[path]:
-            assert torch.equal(despues[path][k], antes[path][k]), f"{path}.{k} was mutated"
+    after = coh_state(dest)
+    for path in before:
+        for k in before[path]:
+            assert torch.equal(after[path][k], before[path][k]), f"{path}.{k} was mutated"
 
 
 def test_no_partial_load_on_topology_error(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 1]), f)
 
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
-    antes = coh_state(destino)
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
+    before = coh_state(dest)
     with pytest.raises(RuntimeError):
-        load_adapter(destino, f)
-    despues = coh_state(destino)
-    for p in antes:
-        for k in antes[p]:
-            assert torch.equal(despues[p][k], antes[p][k])
+        load_adapter(dest, f)
+    after = coh_state(dest)
+    for p in before:
+        for k in before[p]:
+            assert torch.equal(after[p][k], before[p][k])
 
 
 # -- 5. the base model is never touched -----------------------------------
 
 def test_base_weights_untouched_by_load(tmp_path):
     f = tmp_path / "a.pt"
-    origen = injected()
-    randomize_coh(origen)
-    save_adapter(origen, f)
+    src = injected()
+    randomize_coh(src)
+    save_adapter(src, f)
 
-    destino = injected()
+    dest = injected()
     base_antes = {
         n: p.clone()
-        for n, p in destino.named_parameters()
+        for n, p in dest.named_parameters()
         if ".coh." not in n
     }
-    load_adapter(destino, f)
-    for n, p in destino.named_parameters():
+    load_adapter(dest, f)
+    for n, p in dest.named_parameters():
         if ".coh." not in n:
             assert torch.equal(p, base_antes[n]), f"{n} was mutated"
 
@@ -304,8 +304,8 @@ def test_trainable_beta_is_informative_not_prescriptive(tmp_path):
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, trainable_beta=True), f)
 
-    destino = apply_coh(TinyModel(), d_tau=D_TAU, trainable_beta=False)
-    meta = load_adapter(destino, f)
+    dest = apply_coh(TinyModel(), d_tau=D_TAU, trainable_beta=False)
+    meta = load_adapter(dest, f)
     assert meta["trainable_beta"] is True
-    for m in destino.layers:
+    for m in dest.layers:
         assert m.coh.beta.requires_grad is False

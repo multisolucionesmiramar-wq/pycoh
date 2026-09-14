@@ -89,14 +89,14 @@ def test_parameters_actually_change():
     and after.
     """
     model = build()
-    antes = snapshot(model)
+    before = snapshot(model)
     train(model, steps=20)
-    despues = snapshot(model)
+    after = snapshot(model)
 
-    movidos = [n for n in antes if not torch.equal(antes[n], despues[n])]
-    esperados = [n for n, p in model.named_parameters() if p.requires_grad]
-    assert sorted(movidos) == sorted(esperados)
-    assert len(movidos) == N_LAYERS * 3  # W_tau, phi_proj, out_proj per layer
+    moved = [n for n in before if not torch.equal(before[n], after[n])]
+    expected_names = [n for n, p in model.named_parameters() if p.requires_grad]
+    assert sorted(moved) == sorted(expected_names)
+    assert len(moved) == N_LAYERS * 3  # W_tau, phi_proj, out_proj per layer
 
 
 def test_base_weights_never_move_during_training():
@@ -127,10 +127,10 @@ def test_beta_frozen_stays_frozen_through_training():
 
 def test_trainable_beta_moves():
     model = build(trainable_beta=True)
-    antes = [m.coh.beta.item() for m in model.layers]
+    before = [m.coh.beta.item() for m in model.layers]
     train(model, steps=50)
-    despues = [m.coh.beta.item() for m in model.layers]
-    assert any(a != d for a, d in zip(antes, despues))
+    after = [m.coh.beta.item() for m in model.layers]
+    assert any(a != d for a, d in zip(before, after))
 
 
 # -- 2. numerical stability -----------------------------------------------
@@ -216,7 +216,7 @@ def test_adapter_checkpoint_mid_training(tmp_path):
 
     a = build()
     train(a, steps=40, ids=ids)
-    f = tmp_path / "mitad.pt"
+    f = tmp_path / "midpoint.pt"
     save_adapter(a, f)
     resto_a = train(a, steps=20, ids=ids)
 
@@ -235,20 +235,20 @@ def test_trained_adapter_transfers_to_fresh_model(tmp_path):
     of 700.
     """
     ids = fixed_batch()
-    entrenado = build()
-    train(entrenado, steps=80, ids=ids)
-    entrenado.eval()
+    trained = build()
+    train(trained, steps=80, ids=ids)
+    trained.eval()
     with torch.no_grad():
-        objetivo = lm_loss(entrenado, ids).item()
+        target_loss = lm_loss(trained, ids).item()
 
-    f = tmp_path / "entrenado.pt"
-    save_adapter(entrenado, f)
+    f = tmp_path / "trained.pt"
+    save_adapter(trained, f)
 
-    limpio = build()
-    load_adapter(limpio, f)
-    limpio.eval()
+    clean_model = build()
+    load_adapter(clean_model, f)
+    clean_model.eval()
     with torch.no_grad():
-        assert lm_loss(limpio, ids).item() == pytest.approx(objetivo, rel=1e-6)
+        assert lm_loss(clean_model, ids).item() == pytest.approx(target_loss, rel=1e-6)
 
 
 def test_coh_beats_frozen_baseline():
