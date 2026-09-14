@@ -8,7 +8,7 @@ authors:
     orcid: "https://orcid.org/0009-0001-9121-974X"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.22738978"
+    value: "10.5281/zenodo.22738977"
     description: "Release v0.1.0"
 repository-code: "https://github.com/multisolucionesmiramar-wq/pycoh"
 license: Apache-2.0
