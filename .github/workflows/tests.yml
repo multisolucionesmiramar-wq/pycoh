@@ -19,14 +19,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Instalar torch (CPU) y el paquete
+      - name: Install torch (CPU) and the package
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev]"
 
-      - name: Suite
+      - name: Test suite
         run: pytest -q
 
-      - name: Diagnóstico de inicialización a cero
+      - name: Zero-init diagnostic
         run: python tests/diagnostics/zero_init_probe.py
