@@ -1,6 +1,8 @@
 # PyCoH
 
-*[English](README.md) · Español*
+*English · [Español](README.es.md)*
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22738977.svg)](https://doi.org/10.5281/zenodo.22738977)
 
 Adaptador de ajuste fino eficiente en parámetros para transformers. Inyecta
 una corrección direccional en el residual stream de cada bloque, con el
