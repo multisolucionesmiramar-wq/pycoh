@@ -13,4 +13,4 @@ __all__ = [
     "load_adapter",
     "adapter_metadata",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.1"
