@@ -1,7 +1,7 @@
 """
-Suite F0 — contrato del núcleo CoH.
+Suite F0 -- CoH core contract.
 
-Ejecutar:  pytest -q tests/test_core.py
+Run with:  pytest -q tests/test_core.py
 """
 
 import math
@@ -15,8 +15,8 @@ from pycoh.core.coh import CoH
 D_MODEL, D_TAU, B, T = 16, 8, 2, 5
 SEED = 0
 
-# Cota superior de scale con r_max=0.98, evaluada en la misma precisión
-# que usa el núcleo.
+# Upper bound of scale at r_max=0.98, evaluated in the same precision the
+# core uses.
 S_MAX_FP32 = (
     1.0 / torch.sqrt(1.0 - torch.tensor(0.98, dtype=torch.float32) ** 2) - 1.0
 ).item()
@@ -29,8 +29,8 @@ def make(**kw) -> CoH:
 
 def reference_delta(coh: CoH, h: torch.Tensor) -> dict:
     """
-    Referencia matemática independiente, escrita directamente desde la
-    especificación. No llama a ningún método del módulo bajo prueba.
+    Independent mathematical reference, written straight from the
+    specification. It calls no method of the module under test.
     """
     h32 = h.float()
     W_tau = coh.W_tau.weight.detach().float()
@@ -58,23 +58,23 @@ def reference_delta(coh: CoH, h: torch.Tensor) -> dict:
     }
 
 
-# ── 1. matemática ────────────────────────────────────────────────────────
+# -- 1. mathematics -------------------------------------------------------
 
 def test_arithmetic_stages_match_reference_bitwise():
-    """Etapas de aritmética pura: igualdad bit a bit, sin tolerancia."""
+    """Pure arithmetic stages: bitwise equality, no tolerance."""
     coh = make()
     h = torch.randn(B, T, D_MODEL)
     got = coh._stages(h)
     ref = reference_delta(coh, h)
     for k in ("z", "ratio", "F_val", "scale"):
-        assert torch.equal(got[k], ref[k]), f"divergencia en {k}"
+        assert torch.equal(got[k], ref[k]), f"divergence at {k}"
 
 
 def test_direction_and_delta_match_reference():
     """
-    d_hat y delta pasan por F.normalize. La referencia reproduce su
-    semántica matemática, no su implementación, así que aquí se exige
-    equivalencia numérica y no identidad de bits.
+    d_hat and delta go through F.normalize. The reference reproduces its
+    mathematical semantics, not its implementation, so what is required here
+    is numerical equivalence rather than bitwise identity.
     """
     coh = make()
     h = torch.randn(B, T, D_MODEL)
@@ -86,9 +86,9 @@ def test_direction_and_delta_match_reference():
 
 def test_normalize_semantics_match_definition():
     """
-    Aísla la suposición frágil: que F.normalize sea exactamente
-    x / max(||x||, eps). Si una versión de PyTorch cambia su
-    implementación, falla este test y no la referencia matemática.
+    Isolates the fragile assumption: that F.normalize is exactly
+    x / max(||x||, eps). If some PyTorch version changes its implementation,
+    this test fails instead of the mathematical reference.
     """
     x = torch.randn(4, 7)
     ref = x / x.norm(dim=-1, keepdim=True).clamp_min(CoH.NORMALIZE_EPS)
@@ -116,18 +116,18 @@ def test_wrong_last_dim_raises():
         coh(torch.randn(B, T, D_MODEL + 1))
 
 
-# ── 2. clamp ─────────────────────────────────────────────────────────────
+# -- 2. clamp -------------------------------------------------------------
 
 def test_clamp_binds_and_is_applied_before_F():
     coh = make()
-    # phi_proj grande ⇒ sigmoid saturada por encima de r_max
+    # large phi_proj => sigmoid saturates above r_max
     with torch.no_grad():
         coh.phi_proj.weight.fill_(50.0)
         coh.W_tau.weight.fill_(1.0)
     h = torch.ones(B, T, D_MODEL)
 
     st = coh._stages(h)
-    assert (st["gate"] > coh.r_max).all(), "el test no forzó el clamp"
+    assert (st["gate"] > coh.r_max).all(), "the test did not force the clamp"
     assert torch.equal(st["ratio"], torch.full_like(st["ratio"], coh.r_max))
 
     assert st["scale"].max().item() == pytest.approx(S_MAX_FP32, rel=1e-6)
@@ -142,15 +142,15 @@ def test_scale_strictly_positive_on_moderate_input():
 
 def test_scale_bounded_on_extreme_input():
     """
-    Con logits muy negativos sigmoid puede saturar a 0 exacto y scale
-    valer 0. Eso es admisible: la cota superior es lo que el contrato
-    garantiza siempre.
+    With very negative logits sigmoid can saturate to exactly 0 and scale
+    can be 0. That is acceptable: the upper bound is what the contract
+    always guarantees.
     """
     coh = make()
-    # La cota se evalúa en FP32, igual que el núcleo: en float64 da
-    # 4.0251891 y en float32 da 4.0251918. La diferencia (~2.7e-6) es el
-    # error de redondeo propio de 1/sqrt(1-r^2) con r=0.98, así que la
-    # tolerancia tiene que ser relativa, no absoluta.
+    # The bound is evaluated in FP32, like the core: float64 gives
+    # 4.0251891 and float32 gives 4.0251918. The gap (~2.7e-6) is the
+    # rounding error of 1/sqrt(1-r^2) at r=0.98, so the tolerance has to be
+    # relative rather than absolute.
     s_max = S_MAX_FP32
     for mult in (1.0, 1e2, 1e4):
         st = coh._stages(torch.randn(B, T, D_MODEL) * mult)
@@ -166,7 +166,7 @@ def test_direction_is_unit_norm():
     assert torch.allclose(n, torch.ones_like(n), atol=1e-6)
 
 
-# ── 3. dtype y AMP ───────────────────────────────────────────────────────
+# -- 3. dtype and AMP -----------------------------------------------------
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_dtype_roundtrip(dtype):
@@ -182,7 +182,7 @@ def test_module_in_half_precision_still_computes_in_fp32():
     h = torch.randn(B, T, D_MODEL)
     ref = coh._stages(h)["z"]
     coh_half = make().half()
-    # los pesos son fp16, pero el cálculo debe subir a fp32 sin error
+    # the weights are fp16, but the computation must upcast to fp32 cleanly
     z = coh_half._stages(h.half())["z"]
     assert z.dtype == torch.float32
     assert ref.dtype == torch.float32
@@ -191,8 +191,8 @@ def test_module_in_half_precision_still_computes_in_fp32():
 @pytest.mark.parametrize("amp_dtype", [torch.bfloat16])
 def test_autocast_does_not_change_result(amp_dtype):
     """
-    Sin el bloque autocast(enabled=False) del núcleo, torch castearía las
-    operaciones lineales a precisión baja y este test fallaría.
+    Without the core's autocast(enabled=False) block, torch would cast the
+    linear operations down to low precision and this test would fail.
     """
     coh = make()
     h = torch.randn(B, T, D_MODEL)
@@ -203,7 +203,7 @@ def test_autocast_does_not_change_result(amp_dtype):
     assert torch.equal(inside, outside)
 
 
-# ── 4. gradientes ────────────────────────────────────────────────────────
+# -- 4. gradients ---------------------------------------------------------
 
 def test_backward_default_beta_frozen():
     coh = make()
@@ -222,7 +222,7 @@ def test_backward_trainable_beta():
     coh(h).pow(2).mean().backward()
     assert coh.beta.grad is not None
     assert torch.isfinite(coh.beta.grad).all()
-    # grad is not None no basta: exigimos participación efectiva
+    # grad is not None is not enough: we demand effective participation
     assert coh.beta.grad.abs().sum().item() > 0
     assert coh.trainable_beta is True
 
@@ -240,10 +240,10 @@ def test_gradients_are_finite():
     h = torch.randn(B, T, D_MODEL)
     coh(h).pow(2).mean().backward()
     for name, p in coh.named_parameters():
-        assert torch.isfinite(p.grad).all(), f"gradiente no finito en {name}"
+        assert torch.isfinite(p.grad).all(), f"non-finite gradient in {name}"
 
 
-# ── 5. estado y conteo ───────────────────────────────────────────────────
+# -- 5. state and counts --------------------------------------------------
 
 def test_state_dict_keys_exact():
     coh = make()
@@ -282,9 +282,9 @@ def test_constructor_validation():
         CoH(16, 8, r_max=0.0)
 
 
-# ── 6. CUDA (opcional) ───────────────────────────────────────────────────
+# -- 6. CUDA (optional) ---------------------------------------------------
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="sin GPU")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no GPU")
 def test_cuda_autocast_equivalence():
     coh = make().cuda()
     h = torch.randn(B, T, D_MODEL, device="cuda")

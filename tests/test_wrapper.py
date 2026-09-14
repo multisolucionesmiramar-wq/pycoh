@@ -1,7 +1,7 @@
 """
-Suite F1 — contrato del wrapper.
+Suite F1 -- wrapper contract.
 
-Ejecutar:  pytest -q tests/test_wrapper.py
+Run with:  pytest -q tests/test_wrapper.py
 """
 
 from collections import OrderedDict, namedtuple
@@ -19,9 +19,9 @@ SEED = 0
 
 class RecordingBlock(nn.Module):
     """
-    Bloque no trivial que además registra exactamente con qué lo llamaron.
-    La transformación es deliberadamente no lineal y no conmutativa para
-    que B(h) + CoH(h) no pueda confundirse con B(h + CoH(h)).
+    A non-trivial block that also records exactly how it was called. The
+    transformation is deliberately non-linear and non-commutative so that
+    B(h) + CoH(h) cannot be confused with B(h + CoH(h)).
     """
 
     def __init__(self, d_model: int, mode: str = "tensor") -> None:
@@ -30,8 +30,8 @@ class RecordingBlock(nn.Module):
         self.mode = mode
         self.seen_args = None
         self.seen_kwargs = None
-        # referencias estables: si se recrearan en cada forward, el test
-        # de identidad compararía contra objetos nuevos
+        # stable references: if these were rebuilt on every forward, the
+        # identity test would compare against fresh objects
         self.extras = (torch.arange(4), {"cache": 1})
 
     def forward(self, hidden_states, *args, **kwargs):
@@ -51,12 +51,12 @@ class RecordingBlock(nn.Module):
         if self.mode == "empty_tuple":
             return ()
         if self.mode == "bad_tuple":
-            return ("no soy un tensor", h)
+            return ("not a tensor", h)
         raise AssertionError(self.mode)
 
 
 class ZeroBlock(nn.Module):
-    """Anula su entrada: la salida del wrapper debe ser exactamente delta."""
+    """Zeroes its input: the wrapper output must be exactly delta."""
 
     def forward(self, hidden_states, *args, **kwargs):
         return torch.zeros_like(hidden_states)
@@ -77,7 +77,7 @@ def build(mode: str = "tensor"):
     return CoHBlockWrapper(block, coh), block, coh
 
 
-# ── 1. composición ───────────────────────────────────────────────────────
+# -- 1. composition -------------------------------------------------------
 
 def test_tensor_output_is_block_plus_coh():
     w, block, coh = build("tensor")
@@ -90,9 +90,9 @@ def test_tensor_output_is_block_plus_coh():
 
 def test_coh_reads_the_input_not_the_block_output():
     """
-    Con un bloque que anula su entrada, la salida debe ser exactamente
-    CoH(h). Si el wrapper calculase CoH(B(h)) el resultado sería CoH(0),
-    que es distinto.
+    With a block that zeroes its input, the output must be exactly CoH(h).
+    Were the wrapper computing CoH(B(h)) the result would be CoH(0), which
+    is a different thing.
     """
     torch.manual_seed(SEED)
     coh = CoH(D_MODEL, D_TAU)
@@ -108,7 +108,7 @@ def test_output_dtype_matches_input():
     assert w(h).dtype == h.dtype
 
 
-# ── 2. tuplas ────────────────────────────────────────────────────────────
+# -- 2. tuples ------------------------------------------------------------
 
 def test_tuple_output_preserves_tail_by_reference():
     w, block, coh = build("tuple")
@@ -116,7 +116,7 @@ def test_tuple_output_preserves_tail_by_reference():
     out = w(h)
     assert isinstance(out, tuple) and len(out) == 3
     assert torch.equal(out[0], block(h)[0] + coh(h))
-    # identidad de referencia, no igualdad de valor
+    # reference identity, not value equality
     assert out[1] is block.extras[0]
     assert out[2] is block.extras[1]
 
@@ -131,7 +131,7 @@ def test_namedtuple_type_is_preserved():
     assert torch.equal(out.hidden_states, h * 2.0 + coh(h))
 
 
-# ── 3. rechazo explícito ─────────────────────────────────────────────────
+# -- 3. explicit rejection ------------------------------------------------
 
 @pytest.mark.parametrize("mode", ["dict", "odict", "list", "empty_tuple", "bad_tuple"])
 def test_unsupported_output_raises_typeerror(mode):
@@ -149,18 +149,18 @@ def test_missing_hidden_state_raises():
 def test_non_tensor_hidden_state_raises():
     w, _, _ = build("tensor")
     with pytest.raises(TypeError):
-        w("no soy un tensor")
+        w("not a tensor")
 
 
 def test_constructor_type_validation():
     coh = CoH(D_MODEL, D_TAU)
     with pytest.raises(TypeError):
-        CoHBlockWrapper("no soy un módulo", coh)
+        CoHBlockWrapper("not a module", coh)
     with pytest.raises(TypeError):
-        CoHBlockWrapper(nn.Identity(), "no soy CoH")
+        CoHBlockWrapper(nn.Identity(), "not a CoH")
 
 
-# ── 4. transparencia de ruteo ────────────────────────────────────────────
+# -- 4. routing transparency ----------------------------------------------
 
 def test_args_and_kwargs_reach_the_block_untouched():
     w, block, _ = build("tensor")
@@ -183,14 +183,14 @@ def test_hidden_state_as_keyword_works():
     w, block, coh = build("tensor")
     h = torch.randn(B, T, D_MODEL)
     got = w(hidden_states=h, attention_mask=None)
-    # capturar antes de volver a llamar al bloque: la segunda llamada
-    # sobrescribe lo registrado
+    # capture before calling the block again: the second call overwrites
+    # what was recorded
     seen = dict(block.seen_kwargs)
     assert seen == {"attention_mask": None}
     assert torch.equal(got, block(h) + coh(h))
 
 
-# ── 5. estructura y gradientes ───────────────────────────────────────────
+# -- 5. structure and gradients -------------------------------------------
 
 def test_structural_identity():
     w, block, coh = build("tensor")
@@ -208,7 +208,7 @@ def test_gradients_flow_to_both_block_and_coh():
     assert block.lin.weight.grad is not None
     assert coh.W_tau.weight.grad is not None
     assert coh.out_proj.weight.grad is not None
-    assert coh.beta.grad is None  # congelado por defecto
+    assert coh.beta.grad is None  # frozen by default
 
 
 def test_wrapper_adds_no_parameters_of_its_own():

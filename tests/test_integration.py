@@ -1,7 +1,7 @@
 """
-Suite F2 — descubrimiento, resolución e inyección.
+Suite F2 -- discovery, resolution and injection.
 
-Ejecutar:  pytest -q tests/test_integration.py
+Run with:  pytest -q tests/test_integration.py
 """
 
 from types import SimpleNamespace
@@ -30,7 +30,7 @@ class Block(nn.Module):
 
 
 class TinyModel(nn.Module):
-    """Modelo sintético mínimo con la forma de un transformer."""
+    """Minimal synthetic model shaped like a transformer."""
 
     def __init__(self, d_model=D_MODEL, n_layers=N_LAYERS, declare="hidden_size"):
         super().__init__()
@@ -50,7 +50,7 @@ class TinyModel(nn.Module):
 
 
 class TwoStackModel(nn.Module):
-    """Dos pilas hermanas indistinguibles por estructura."""
+    """Two sibling stacks, structurally indistinguishable."""
 
     def __init__(self, d_model=D_MODEL):
         super().__init__()
@@ -60,7 +60,7 @@ class TwoStackModel(nn.Module):
 
 
 class NestedModel(nn.Module):
-    """La pila externa contiene bloques que a su vez tienen un ModuleList."""
+    """The outer stack holds blocks that themselves own a ModuleList."""
 
     class Expert(nn.Module):
         def __init__(self, d_model):
@@ -83,7 +83,7 @@ class NestedModel(nn.Module):
         self.config = SimpleNamespace(hidden_size=d_model)
 
 
-# ── 1. Inspector: solo observa ───────────────────────────────────────────
+# -- 1. Inspector: it only observes ---------------------------------------
 
 def test_inspector_finds_homogeneous_container():
     info = inspect_model(TinyModel())
@@ -128,7 +128,7 @@ def test_inspector_reports_existing_injection_without_raising():
     assert len(info.injected_paths) == N_LAYERS
 
 
-# ── 2. Resolver: decide o falla ──────────────────────────────────────────
+# -- 2. Resolver: decide or fail ------------------------------------------
 
 def test_resolver_picks_outermost_unambiguous():
     target = resolve_target(inspect_model(NestedModel()))
@@ -140,7 +140,7 @@ def test_resolver_rejects_ambiguity():
     info = inspect_model(TwoStackModel())
     with pytest.raises(ValueError, match="ambiguous"):
         resolve_target(info)
-    # con override explícito sí resuelve
+    # with an explicit override it does resolve
     assert resolve_target(info, target_modules="stack_b").path == "stack_b"
 
 
@@ -172,7 +172,7 @@ def test_layers_validation_accepts():
     assert resolve_layers((1,), 4) == (1,)
 
 
-# ── 3. Injector: muta, atómicamente ──────────────────────────────────────
+# -- 3. Injector: it mutates, atomically ----------------------------------
 
 def test_injection_wraps_selected_layers_only():
     model = apply_coh(TinyModel(), d_tau=D_TAU, layers=[0, 2])
@@ -189,7 +189,7 @@ def test_double_injection_rejected():
     model = apply_coh(TinyModel(), d_tau=D_TAU)
     with pytest.raises(RuntimeError, match="already has CoH"):
         apply_coh(model, d_tau=D_TAU)
-    # y la topología previa sigue intacta: un solo nivel de wrapper
+    # and the previous topology is intact: a single wrapper level
     assert all(isinstance(m, CoHBlockWrapper) for m in model.layers)
     assert all(not isinstance(m.block, CoHBlockWrapper) for m in model.layers)
 
@@ -209,7 +209,7 @@ def test_no_partial_mutation_on_ambiguity():
     assert not any(isinstance(m, CoHBlockWrapper) for m in model.modules())
 
 
-# ── 4. Congelamiento ─────────────────────────────────────────────────────
+# -- 4. Freezing ----------------------------------------------------------
 
 def test_base_frozen_and_coh_trainable_by_identity():
     model = apply_coh(TinyModel(), d_tau=D_TAU)
@@ -244,7 +244,7 @@ def test_freeze_can_be_skipped():
     assert model.head.weight.requires_grad is True
 
 
-# ── 5. Forward, backward y conteo exacto ─────────────────────────────────
+# -- 5. Forward, backward and exact counts --------------------------------
 
 def test_forward_and_backward_after_injection():
     model = apply_coh(TinyModel(), d_tau=D_TAU)
@@ -255,14 +255,14 @@ def test_forward_and_backward_after_injection():
         if isinstance(m, CoHBlockWrapper):
             assert m.coh.W_tau.weight.grad is not None
             assert m.coh.out_proj.weight.grad is not None
-    assert model.head.weight.grad is None  # congelado
+    assert model.head.weight.grad is None  # frozen
 
 
 def test_reference_parameter_counts():
     """
-    d_model=960, d_tau=96, 32 capas: los números del contrato.
-    Modelo sintético con la misma forma que el objetivo de referencia,
-    para no depender de la red en la suite.
+    d_model=960, d_tau=96, 32 layers: the contract numbers. A synthetic
+    model shaped like the reference target, so the suite does not depend on
+    the network.
     """
     d_model, d_tau, n_layers = 960, 96, 32
     model = apply_coh(
@@ -290,7 +290,7 @@ def test_injected_coh_modules_are_distinct_instances():
     cohs = [m.coh for m in model.layers]
     assert len({id(c) for c in cohs}) == N_LAYERS
     assert all(isinstance(c, CoH) for c in cohs)
-    # pesos independientes, no compartidos
+    # independent weights, not shared
     assert not torch.equal(cohs[0].W_tau.weight, cohs[1].W_tau.weight)
 
 
@@ -301,7 +301,7 @@ def test_freeze_base_is_idempotent():
     assert [p.requires_grad for p in model.parameters()] == before
 
 
-# ── 6. colocación de dispositivo ─────────────────────────────────────────
+# -- 6. device placement --------------------------------------------------
 
 def test_module_device_helper():
     from pycoh.integration.injector import _module_device
@@ -318,12 +318,12 @@ def test_coh_lands_on_the_block_device_cpu():
             assert p.device == dev_bloque
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="sin GPU")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no GPU")
 def test_coh_follows_model_already_on_gpu():
     """
-    El caso que rompía: mover el modelo a GPU y después inyectar. Sin la
-    herencia de dispositivo, CoH se quedaba en CPU y el forward fallaba
-    con 'Expected all tensors to be on the same device'.
+    The case that used to break: move the model to GPU and inject
+    afterwards. Without device inheritance, CoH stayed on CPU and the
+    forward failed with 'Expected all tensors to be on the same device'.
     """
     model = TinyModel().cuda()
     apply_coh(model, d_tau=D_TAU)
@@ -334,9 +334,9 @@ def test_coh_follows_model_already_on_gpu():
     assert model(ids).is_cuda
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="sin GPU")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no GPU")
 def test_adapter_round_trip_across_devices(tmp_path):
-    """Guardar desde GPU, cargar en GPU: los tensores del archivo van a CPU."""
+    """Save from GPU, load on GPU: the file tensors travel through CPU."""
     from pycoh.integration.serialization import load_adapter, save_adapter
 
     origen = apply_coh(TinyModel().cuda(), d_tau=D_TAU)

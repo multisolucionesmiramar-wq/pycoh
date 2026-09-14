@@ -1,17 +1,17 @@
 """
-F4 — ciclo de entrenamiento real contra HuggingFaceTB/SmolLM2-360M.
+F4 -- real training cycle against HuggingFaceTB/SmolLM2-360M.
 
-Responde: ¿PyCoH sobrevive a un entrenamiento de verdad — Trainer de
-HuggingFace, precisión mixta, gradient checkpointing, guardado y recarga
-del adaptador — sin romper nada?
+Answers: does PyCoH survive actual training -- HuggingFace Trainer, mixed
+precision, gradient checkpointing, adapter save and reload -- without
+breaking anything?
 
-No pretende medir el rendimiento de CoH. El corpus es minúsculo y el
-número de pasos también: lo que se comprueba es que la maquinaria
-funciona, no que el mecanismo sirva.
+It does not try to measure CoH's performance. The corpus is tiny and so is
+the step count: what is checked is that the machinery works, not that the
+mechanism is any good.
 
     PYTHONPATH=. python tests/integration/smollm2_train.py
 
-Con GPU T4 tarda unos minutos. En CPU funciona pero es lento.
+On a T4 it takes a few minutes. It works on CPU but slowly.
 """
 
 from __future__ import annotations
@@ -29,7 +29,9 @@ MODEL_ID = "HuggingFaceTB/SmolLM2-360M"
 D_TAU = 96
 STEPS = 60
 
-TEXTO = """
+# Sample corpus, deliberately small. Spanish text also exercises the
+# tokenizer on non-English input.
+CORPUS = """
 El taller abre a las ocho de la mañana. Antes de abrir, el técnico revisa
 el inventario de repuestos y anota lo que falta. Los equipos que llegaron
 el día anterior esperan en el estante de diagnóstico, cada uno con su
@@ -52,8 +54,8 @@ def check(label, got, expected=None) -> bool:
         print(f"  {label}: {got}")
         return True
     ok = got == expected
-    print(f"  [{'OK ' if ok else 'MAL'}] {label}: {got}"
-          + ("" if ok else f"  (esperado {expected})"))
+    print(f"  [{'OK ' if ok else 'BAD'}] {label}: {got}"
+          + ("" if ok else f"  (expected {expected})"))
     return ok
 
 
@@ -65,7 +67,7 @@ def main() -> int:
                               TrainingArguments)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    section("ENTORNO")
+    section("ENVIRONMENT")
     print(f"  torch        {torch.__version__}")
     print(f"  transformers {transformers.__version__}")
     print(f"  device       {device}")
@@ -74,35 +76,35 @@ def main() -> int:
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(MODEL_ID).to(device)
-    # inyectar con el modelo YA en GPU: es el orden que rompía antes de que
-    # CoH heredara el dispositivo del bloque
+    # inject with the model ALREADY on GPU: this is the order that used to
+    # break before CoH inherited the block's device
 
-    ids = tok(TEXTO, return_tensors="pt").to(device)
+    ids = tok(CORPUS, return_tensors="pt").to(device)
 
-    section("ANTES DE INYECTAR")
+    section("BEFORE INJECTION")
     model.eval()
     with torch.no_grad():
         loss_base = model(**ids, labels=ids["input_ids"]).loss.item()
-    print(f"  loss base: {loss_base:.4f}")
+    print(f"  base loss: {loss_base:.4f}")
     base_snapshot = {
         n: p.detach().float().cpu().clone()
         for n, p in list(model.named_parameters())[:40]
     }
 
-    section("INYECCIÓN")
+    section("INJECTION")
     apply_coh(model, d_tau=D_TAU)
     wrappers = [m for m in model.modules() if isinstance(m, CoHBlockWrapper)]
     ok = check("wrappers", len(wrappers), 32)
-    entrenables = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    ok &= check("entrenables", entrenables, 5_901_312)
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    ok &= check("trainable", trainable, 5_901_312)
 
-    coh_antes = [
+    coh_before = [
         w.coh.W_tau.weight.detach().float().cpu().clone() for w in wrappers
     ]
 
     section("DATASET")
 
-    class Bloques(Dataset):
+    class Blocks(Dataset):
         def __init__(self, texto, tok, largo=128, n=64):
             enc = tok(texto * 4, return_tensors="pt")["input_ids"][0]
             self.trozos = [enc[i:i + largo] for i in range(0, len(enc) - largo, largo)]
@@ -114,10 +116,10 @@ def main() -> int:
         def __getitem__(self, i):
             return {"input_ids": self.trozos[i], "labels": self.trozos[i].clone()}
 
-    ds = Bloques(TEXTO, tok)
-    print(f"  ejemplos: {len(ds)}  tokens/ejemplo: {len(ds[0]['input_ids'])}")
+    ds = Blocks(CORPUS, tok)
+    print(f"  examples: {len(ds)}  tokens/example: {len(ds[0]['input_ids'])}")
 
-    section(f"ENTRENAMIENTO ({STEPS} pasos)")
+    section(f"TRAINING ({STEPS} steps)")
     try:
         args = TrainingArguments(
             output_dir=tempfile.mkdtemp(),
@@ -136,87 +138,87 @@ def main() -> int:
             train_dataset=ds,
             data_collator=DataCollatorForLanguageModeling(tok, mlm=False),
         )
-        salida = trainer.train()
-        print(f"  loss final de entrenamiento: {salida.training_loss:.4f}")
+        result = trainer.train()
+        print(f"  final training loss: {result.training_loss:.4f}")
     except Exception:
-        print("  FALLO durante el entrenamiento:")
+        print("  FAILURE during training:")
         traceback.print_exc()
         return 1
 
-    section("VERIFICACIONES POST-ENTRENAMIENTO")
+    section("POST-TRAINING CHECKS")
     model.eval()
     with torch.no_grad():
-        loss_entrenado = model(**ids, labels=ids["input_ids"]).loss.item()
-    print(f"  loss base       : {loss_base:.4f}")
-    print(f"  loss con CoH    : {loss_entrenado:.4f}")
-    print(f"  (una sola corrida, corpus mínimo: no es medición de rendimiento)")
+        loss_trained = model(**ids, labels=ids["input_ids"]).loss.item()
+    print(f"  base loss     : {loss_base:.4f}")
+    print(f"  loss with CoH : {loss_trained:.4f}")
+    print("  (single run, tiny corpus: this is not a performance measurement)")
 
-    movidos = [
+    moved = [
         n for n, p in model.named_parameters()
         if n in base_snapshot
         and not torch.equal(p.detach().float().cpu(), base_snapshot[n])
     ]
-    ok &= check("pesos base modificados", len(movidos), 0)
-    if movidos:
-        print(f"        {movidos[:5]}")
+    ok &= check("base weights modified", len(moved), 0)
+    if moved:
+        print(f"        {moved[:5]}")
 
-    # Tras trainer.train() los gradientes están en None: el Trainer llama a
-    # zero_grad(set_to_none=True) al cerrar cada paso. Lo que hay que
-    # comprobar no es que exista gradiente sino que los pesos se movieron.
-    cambiaron = sum(
-        1 for w, antes in zip(wrappers, coh_antes)
-        if not torch.equal(w.coh.W_tau.weight.detach().float().cpu(), antes)
+    # After trainer.train() the gradients are None: the Trainer calls
+    # zero_grad(set_to_none=True) at the end of each step. What has to be
+    # checked is not that a gradient exists but that the weights moved.
+    changed = sum(
+        1 for w, before in zip(wrappers, coh_before)
+        if not torch.equal(w.coh.W_tau.weight.detach().float().cpu(), before)
     )
-    ok &= check("capas CoH cuyos pesos cambiaron", cambiaron, 32)
+    ok &= check("CoH layers whose weights changed", changed, 32)
 
-    finitos = all(
+    finite = all(
         torch.isfinite(p).all().item() for w in wrappers for p in w.coh.parameters()
     )
-    ok &= check("parámetros CoH finitos", finitos, True)
+    ok &= check("CoH params finite", finite, True)
 
     betas = {round(w.coh.beta.item(), 6) for w in wrappers}
-    ok &= check("betas congelados en 0.5", betas, {0.5})
+    ok &= check("betas frozen at 0.5", betas, {0.5})
 
     devs = {str(p.device) for w in wrappers for p in w.coh.parameters()}
-    ok &= check("CoH en el dispositivo del modelo", devs, {str(next(model.parameters()).device)})
+    ok &= check("CoH on the model device", devs, {str(next(model.parameters()).device)})
     dtypes = {str(p.dtype) for w in wrappers for p in w.coh.parameters()}
-    ok &= check("CoH en fp32 (la base puede estar en bf16)", dtypes, {"torch.float32"})
+    ok &= check("CoH in fp32 (base may be bf16)", dtypes, {"torch.float32"})
 
-    section("ADAPTADOR")
+    section("ADAPTER")
     try:
         import os
         f = os.path.join(tempfile.mkdtemp(), "adapter.pt")
         meta = save_adapter(model, f)
-        print(f"  guardado: {os.path.getsize(f)/1e6:.1f} MB  ({len(meta['injected_paths'])} capas)")
+        print(f"  saved: {os.path.getsize(f)/1e6:.1f} MB  ({len(meta['injected_paths'])} layers)")
 
-        limpio = AutoModelForCausalLM.from_pretrained(MODEL_ID).to(device)
-        apply_coh(limpio, d_tau=D_TAU)
-        load_adapter(limpio, f)
-        limpio.eval()
+        clean = AutoModelForCausalLM.from_pretrained(MODEL_ID).to(device)
+        apply_coh(clean, d_tau=D_TAU)
+        load_adapter(clean, f)
+        clean.eval()
         with torch.no_grad():
-            loss_recargado = limpio(**ids, labels=ids["input_ids"]).loss.item()
-        print(f"  loss tras recargar: {loss_recargado:.4f}")
+            loss_reloaded = clean(**ids, labels=ids["input_ids"]).loss.item()
+        print(f"  loss after reload: {loss_reloaded:.4f}")
         ok &= check(
-            "reproduce la pérdida",
-            abs(loss_recargado - loss_entrenado) < 1e-4,
+            "reproduces the loss",
+            abs(loss_reloaded - loss_trained) < 1e-4,
             True,
         )
     except Exception:
-        print("  FALLO en el ciclo del adaptador:")
+        print("  FAILURE in the adapter cycle:")
         traceback.print_exc()
         return 1
 
-    section("GENERACIÓN")
+    section("GENERATION")
     try:
-        salida = model.generate(**ids, max_new_tokens=12, do_sample=False)
-        print("  " + tok.decode(salida[0])[-160:])
+        output = model.generate(**ids, max_new_tokens=12, do_sample=False)
+        print("  " + tok.decode(output[0])[-160:])
     except Exception:
-        print("  FALLO en generate:")
+        print("  FAILURE in generate:")
         traceback.print_exc()
         ok = False
 
-    section("RESULTADO")
-    print("  F4 ENTRENAMIENTO: " + ("TODO OK" if ok else "HAY FALLOS"))
+    section("RESULT")
+    print("  F4 TRAINING: " + ("ALL OK" if ok else "FAILURES PRESENT"))
     return 0 if ok else 1
 
 

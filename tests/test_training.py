@@ -1,14 +1,14 @@
 """
-Suite F4 — ciclo mínimo de entrenamiento.
+Suite F4 -- minimal training cycle.
 
-La pregunta que responde: ¿PyCoH participa en un entrenamiento real sin
-romper el backward, la actualización de parámetros, el checkpoint del
-adaptador ni la estabilidad numérica?
+The question it answers: does PyCoH take part in real training without
+breaking backward, parameter updates, adapter checkpointing or numerical
+stability?
 
-Todo lo de aquí corre en CPU en segundos. La verificación contra un
-modelo y un Trainer reales está en tests/integration/smollm2_train.py.
+Everything here runs on CPU in seconds. Verification against a real model
+and a real Trainer lives in tests/integration/smollm2_train.py.
 
-Ejecutar:  pytest -q tests/test_training.py
+Run with:  pytest -q tests/test_training.py
 """
 
 import copy
@@ -40,7 +40,7 @@ def lm_loss(model, ids):
 
 
 def train(model, steps=150, lr=1e-2, ids=None, amp=False, opt=None):
-    """Bucle de usuario deliberadamente ingenuo: una sola bolsa de parámetros."""
+    """Deliberately naive user loop: a single parameter group."""
     ids = fixed_batch() if ids is None else ids
     opt = opt or torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad], lr=lr
@@ -69,24 +69,24 @@ def snapshot(model):
     return {n: p.detach().clone() for n, p in model.named_parameters()}
 
 
-# ── 1. el ciclo funciona ─────────────────────────────────────────────────
+# -- 1. the cycle works ---------------------------------------------------
 
 def test_loss_decreases_with_only_coh_trainable():
     """
-    Prueba de memorización: con la base congelada y solo CoH entrenable,
-    la pérdida sobre un lote fijo debe bajar. Si no baja, el gradiente no
-    está llegando a donde creemos.
+    Memorization test: with the base frozen and only CoH trainable, the
+    loss on a fixed batch must go down. If it does not, the gradient is not
+    reaching where we think it is.
     """
     model = build()
     h = train(model)
-    assert h[-1] < h[0] * 0.95, f"la pérdida apenas se movió: {h[0]:.4f} → {h[-1]:.4f}"
+    assert h[-1] < h[0] * 0.95, f"the loss barely moved: {h[0]:.4f} -> {h[-1]:.4f}"
     assert all(torch.isfinite(torch.tensor(v)) for v in h)
 
 
 def test_parameters_actually_change():
     """
-    Que haya gradiente no implica que el optimizador escriba. Se compara
-    antes y después.
+    Having a gradient does not mean the optimizer writes. Compare before
+    and after.
     """
     model = build()
     antes = snapshot(model)
@@ -96,7 +96,7 @@ def test_parameters_actually_change():
     movidos = [n for n in antes if not torch.equal(antes[n], despues[n])]
     esperados = [n for n, p in model.named_parameters() if p.requires_grad]
     assert sorted(movidos) == sorted(esperados)
-    assert len(movidos) == N_LAYERS * 3  # W_tau, phi_proj, out_proj por capa
+    assert len(movidos) == N_LAYERS * 3  # W_tau, phi_proj, out_proj per layer
 
 
 def test_base_weights_never_move_during_training():
@@ -115,7 +115,7 @@ def test_base_weights_never_move_during_training():
     train(model, steps=50)
     for n, p in model.named_parameters():
         if n in base_antes:
-            assert torch.equal(p, base_antes[n]), f"{n} se movió"
+            assert torch.equal(p, base_antes[n]), f"{n} moved"
 
 
 def test_beta_frozen_stays_frozen_through_training():
@@ -133,19 +133,20 @@ def test_trainable_beta_moves():
     assert any(a != d for a, d in zip(antes, despues))
 
 
-# ── 2. estabilidad numérica ──────────────────────────────────────────────
+# -- 2. numerical stability -----------------------------------------------
 
 def test_no_nan_under_amp():
     model = build()
     h = train(model, steps=100, amp=True)
-    assert all(v == v for v in h), "apareció NaN bajo precisión mixta"
+    assert all(v == v for v in h), "NaN appeared under mixed precision"
     assert h[-1] < h[0]
 
 
 def test_no_nan_with_aggressive_lr():
     """
-    Con un lr alto la pérdida puede no bajar, pero el mecanismo no debe
-    producir NaN ni Inf: el clamp y la normalización acotan la corrección.
+    At a high lr the loss may not go down, but the mechanism must not
+    produce NaN or Inf: the clamp and the normalization bound the
+    correction.
     """
     model = build()
     h = train(model, steps=80, lr=1.0)
@@ -167,10 +168,10 @@ def test_scale_stays_within_bounds_after_training():
         assert st["scale"].max().item() <= s_max * (1 + 1e-5)
 
 
-# ── 3. gradient checkpointing ────────────────────────────────────────────
+# -- 3. gradient checkpointing --------------------------------------------
 
 class CheckpointedModel(nn.Module):
-    """Llama a cada capa a través de torch.utils.checkpoint, posicionalmente."""
+    """Calls each layer through torch.utils.checkpoint, positionally."""
 
     def __init__(self, base: TinyModel):
         super().__init__()
@@ -186,8 +187,8 @@ class CheckpointedModel(nn.Module):
 
 def test_gradient_checkpointing_path():
     """
-    El camino que HuggingFace usa para ahorrar memoria: recalcular el
-    forward durante el backward, llamando a la capa posicionalmente.
+    The path HuggingFace uses to save memory: recompute the forward during
+    the backward, calling the layer positionally.
     """
     model = build()
     ck = CheckpointedModel(model)
@@ -204,12 +205,12 @@ def test_gradient_checkpointing_path():
             assert m.coh.W_tau.weight.grad is not None
 
 
-# ── 4. el adaptador sobrevive al entrenamiento ───────────────────────────
+# -- 4. the adapter survives training -------------------------------------
 
 def test_adapter_checkpoint_mid_training(tmp_path):
     """
-    Guardar a mitad de entrenamiento, cargar en un modelo limpio y
-    continuar debe dar exactamente la misma trayectoria.
+    Saving mid-training, loading into a clean model and carrying on must
+    yield exactly the same trajectory.
     """
     ids = fixed_batch()
 
@@ -229,9 +230,9 @@ def test_adapter_checkpoint_mid_training(tmp_path):
 
 def test_trained_adapter_transfers_to_fresh_model(tmp_path):
     """
-    Un adaptador entrenado, cargado sobre una instancia limpia del mismo
-    modelo base, reproduce la pérdida. Es el caso de uso real: distribuir
-    23 MB en vez de 700.
+    A trained adapter, loaded onto a clean instance of the same base model,
+    reproduces the loss. This is the real use case: shipping 23 MB instead
+    of 700.
     """
     ids = fixed_batch()
     entrenado = build()
@@ -252,9 +253,9 @@ def test_trained_adapter_transfers_to_fresh_model(tmp_path):
 
 def test_coh_beats_frozen_baseline():
     """
-    Control: el mismo modelo sin CoH y con la base congelada no tiene nada
-    que entrenar, así que su pérdida no se mueve. La mejora que se observa
-    viene del adaptador y no del bucle.
+    Control: the same model without CoH and with the base frozen has
+    nothing to train, so its loss does not move. The improvement observed
+    comes from the adapter, not from the loop.
     """
     ids = fixed_batch()
     torch.manual_seed(0)

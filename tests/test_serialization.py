@@ -1,7 +1,7 @@
 """
-Suite F3 — serialización del adaptador.
+Suite F3 -- adapter serialization.
 
-Ejecutar:  pytest -q tests/test_serialization.py
+Run with:  pytest -q tests/test_serialization.py
 """
 
 import copy
@@ -42,7 +42,7 @@ def randomize_coh(model):
                     p.copy_(torch.randn_like(p))
 
 
-# ── 1. round-trip ────────────────────────────────────────────────────────
+# -- 1. round-trip --------------------------------------------------------
 
 def test_round_trip_is_exact(tmp_path):
     origen = injected()
@@ -53,7 +53,7 @@ def test_round_trip_is_exact(tmp_path):
     save_adapter(origen, f)
 
     destino = injected()
-    assert coh_state(destino) != esperado  # pesos distintos antes de cargar
+    assert coh_state(destino) != esperado  # different weights before loading
     load_adapter(destino, f)
 
     got = coh_state(destino)
@@ -64,7 +64,7 @@ def test_round_trip_is_exact(tmp_path):
 
 
 def test_round_trip_reproduces_delta(tmp_path):
-    """El round-trip se verifica también funcionalmente, no solo por estado."""
+    """The round-trip is checked functionally too, not only by state."""
     origen = injected()
     randomize_coh(origen)
     h = torch.randn(2, 5, D_MODEL)
@@ -90,7 +90,7 @@ def test_beta_value_prevails_over_beta_init(tmp_path):
         assert m.coh.beta.item() == pytest.approx(0.73)
 
 
-# ── 2. contenido del archivo ─────────────────────────────────────────────
+# -- 2. file contents -----------------------------------------------------
 
 def test_adapter_contains_only_coh_weights(tmp_path):
     model = injected()
@@ -109,9 +109,9 @@ def test_adapter_contains_only_coh_weights(tmp_path):
     por_capa = 2 * D_MODEL * D_TAU + D_TAU + 1
     assert total == N_LAYERS * por_capa
 
-    # ningún peso del huésped
+    # not a single host weight
     base = sum(p.numel() for p in TinyModel().parameters())
-    assert total < base * 10  # sanity: no se coló el modelo entero
+    assert total < base * 10  # sanity: the whole model did not sneak in
     assert not any("attn" in k or "mlp" in k or "embed" in k or "head" in k for k in keys)
 
 
@@ -145,7 +145,7 @@ def test_save_rejects_heterogeneous_configs(tmp_path):
         save_adapter(model, tmp_path / "a.pt")
 
 
-# ── 3. rechazos ──────────────────────────────────────────────────────────
+# -- 3. rejections --------------------------------------------------------
 
 def test_load_requires_injected_model(tmp_path):
     f = tmp_path / "a.pt"
@@ -181,9 +181,9 @@ def test_d_tau_mismatch_rejected(tmp_path):
 
 def test_r_max_mismatch_rejected(tmp_path):
     """
-    r_max no cambia ninguna forma, así que load_state_dict no lo detecta:
-    sin esta validación el adaptador se cargaría y el mecanismo se
-    comportaría distinto en silencio.
+    r_max changes no shape, so load_state_dict cannot catch it: without
+    this validation the adapter would load and the mechanism would behave
+    differently in silence.
     """
     f = tmp_path / "a.pt"
     save_adapter(apply_coh(TinyModel(), d_tau=D_TAU, r_max=0.98), f)
@@ -239,12 +239,12 @@ def test_orphan_keys_rejected(tmp_path):
         load_adapter(injected(), f)
 
 
-# ── 4. sin carga parcial ─────────────────────────────────────────────────
+# -- 4. no partial load ---------------------------------------------------
 
 def test_no_partial_load_on_bad_shape(tmp_path):
     """
-    La capa 0 sería válida y la 3 no. Con validación previa completa, el
-    modelo debe quedar intacto: ni siquiera la capa 0 se escribe.
+    Layer 0 would be valid and layer 3 would not. With full up-front
+    validation the model must be untouched: not even layer 0 is written.
     """
     f = tmp_path / "a.pt"
     origen = injected()
@@ -263,7 +263,7 @@ def test_no_partial_load_on_bad_shape(tmp_path):
     despues = coh_state(destino)
     for path in antes:
         for k in antes[path]:
-            assert torch.equal(despues[path][k], antes[path][k]), f"{path}.{k} mutado"
+            assert torch.equal(despues[path][k], antes[path][k]), f"{path}.{k} was mutated"
 
 
 def test_no_partial_load_on_topology_error(tmp_path):
@@ -280,7 +280,7 @@ def test_no_partial_load_on_topology_error(tmp_path):
             assert torch.equal(despues[p][k], antes[p][k])
 
 
-# ── 5. el modelo base no se toca ─────────────────────────────────────────
+# -- 5. the base model is never touched -----------------------------------
 
 def test_base_weights_untouched_by_load(tmp_path):
     f = tmp_path / "a.pt"
@@ -297,7 +297,7 @@ def test_base_weights_untouched_by_load(tmp_path):
     load_adapter(destino, f)
     for n, p in destino.named_parameters():
         if ".coh." not in n:
-            assert torch.equal(p, base_antes[n]), f"{n} mutado"
+            assert torch.equal(p, base_antes[n]), f"{n} was mutated"
 
 
 def test_trainable_beta_is_informative_not_prescriptive(tmp_path):
