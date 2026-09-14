@@ -1,10 +1,8 @@
 # PyCoH
 
-*English · [Español](README.es.md)*
+*[English](README.md) · Español*
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22738977.svg)](https://doi.org/10.5281/zenodo.22738977)
-
-Parameter-efficient fine-tuning adapter for transformers. It injects a
 
 Adaptador de ajuste fino eficiente en parámetros para transformers. Inyecta
 una corrección direccional en el residual stream de cada bloque, con el
