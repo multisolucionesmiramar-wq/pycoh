@@ -2,6 +2,8 @@
 
 *English · [Español](README.es.md)*
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22738977.svg)](https://doi.org/10.5281/zenodo.22738977)
+
 Parameter-efficient fine-tuning adapter for transformers. It injects a
 directional correction into the residual stream of every block, with the
 base model fully frozen.
