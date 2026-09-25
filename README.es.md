@@ -74,10 +74,21 @@ Verificado en ejecución sobre T4: `Trainer` de HuggingFace, base en
 `bfloat16`, gradient checkpointing activo, guardado y recarga del adaptador
 sobre un modelo recién descargado reproduciendo la pérdida.
 
-**PyCoH no publica todavía ninguna medición de rendimiento.** No hay
-comparación contra LoRA ni contra ajuste fino completo en este repositorio.
-Lo que está verificado es que el mecanismo se aplica, entrena, se guarda y
-se recarga correctamente.
+**El repositorio no declara rendimiento agregado del modelo de lenguaje.**
+Un estudio separado y preregistrado, P5-M, reporta una comparación
+confirmatoria de CoH con la configuración LoReFT 2-prefix/2-suffix sobre
+SmolLM2-360M-Instruct congelado. Su endpoint es la persistencia posicional:
+la pendiente con la posición relativa de la mejora de pérdida por token,
+no la pérdida agregada, perplexity, utilidad downstream ni calidad general
+del modelo. El estudio obtuvo ΔD > 0 en 48 de 69 textos (prueba exacta
+unilateral de signos, p = 0.00078; media ΔD = 0.0948; mediana = 0.0720).
+El resultado está restringido al backbone, corpus, longitud de secuencia,
+protocolo de entrenamiento y configuraciones de intervención probados; no
+es una afirmación de superioridad general.
+
+Artículo: **P5-M — Positional Persistence of a Dynamic Activation Correction**
+(DOI: `10.5281/zenodo.22865398`), preregistrado en
+`10.17605/OSF.IO/X5W8T`.
 
 ## Precisión numérica
 
