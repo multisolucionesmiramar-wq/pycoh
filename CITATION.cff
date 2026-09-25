@@ -28,6 +28,14 @@ keywords:
   - adapter
 references:
   - type: article
+    title: "P5-M: Positional Persistence of a Dynamic Activation Correction"
+    authors:
+      - family-names: "Ramírez Azofeifa"
+        given-names: "Franklin Moisés"
+        orcid: "https://orcid.org/0009-0001-9121-974X"
+    year: 2026
+    doi: "10.5281/zenodo.22865398"
+  - type: article
     title: "Fisher-Rao Geometry as the Common Origin of Cosmological Bounces, Holographic Duality, and Geodesic Regularization: A Derivation from Cencov's Uniqueness Theorem"
     authors:
       - family-names: "Ramírez Azofeifa"

@@ -74,10 +74,20 @@ Verified by execution on a T4: HuggingFace `Trainer`, base in `bfloat16`,
 gradient checkpointing enabled, adapter saved and reloaded onto a freshly
 downloaded model reproducing the loss.
 
-**PyCoH does not yet publish any performance measurement.** There is no
-comparison against LoRA or full fine-tuning in this repository. What is
-verified is that the mechanism applies, trains, saves and reloads
-correctly.
+**The repository does not claim aggregate language-model performance.** A
+separate preregistered study, P5-M, reports a confirmatory comparison of
+CoH with the 2-prefix/2-suffix LoReFT configuration on frozen
+SmolLM2-360M-Instruct. Its endpoint is positional persistence: the
+relative-position slope of per-position loss improvement, not aggregate
+loss, perplexity, downstream utility, or general language-model quality.
+The study found ΔD > 0 on 48 of 69 texts (exact one-sided sign test
+p = 0.00078; mean ΔD = 0.0948; median = 0.0720). This result is specific
+to the tested backbone, corpus, sequence length, training protocol, and
+intervention configurations; it is not a general superiority claim.
+
+Paper: **P5-M — Positional Persistence of a Dynamic Activation Correction**
+(DOI: `10.5281/zenodo.22865398`), preregistered at
+`10.17605/OSF.IO/X5W8T`.
 
 ## Numerical precision
 
