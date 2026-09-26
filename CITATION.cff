@@ -18,9 +18,9 @@ identifiers:
     description: "Release v0.1.0"
 repository-code: "https://github.com/multisolucionesmiramar-wq/pycoh"
 license: Apache-2.0
-version: 0.1.1
-date-released: "2026-09-14"
-doi: "10.5281/zenodo.22739636"
+version: 0.1.2
+date-released: "2026-09-25"
+url: "https://github.com/multisolucionesmiramar-wq/pycoh/releases/tag/v0.1.2"
 keywords:
   - pytorch
   - transformers
