@@ -9,13 +9,16 @@ authors:
 identifiers:
   - type: doi
     value: "10.5281/zenodo.22738977"
-    description: "Concept DOI: always resolves to the latest version"
+    description: "Concept DOI: historical record"
+  - type: doi
+    value: "10.5281/zenodo.22738978"
+    description: "Release v0.1.0"
   - type: doi
     value: "10.5281/zenodo.22739636"
     description: "Release v0.1.1"
   - type: doi
-    value: "10.5281/zenodo.22738978"
-    description: "Release v0.1.0"
+    value: "10.5281/zenodo.22972086"
+    description: "Release v0.1.2"
 repository-code: "https://github.com/multisolucionesmiramar-wq/pycoh"
 license: Apache-2.0
 version: 0.1.2
