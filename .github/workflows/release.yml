@@ -1,0 +1,96 @@
+name: Publish PyCoH to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to publish"
+        required: true
+        default: "v0.1.2"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+
+          tag = os.environ["RELEASE_TAG"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+].*)?", tag):
+              raise SystemExit(f"Invalid release tag: {tag}")
+
+          expected = tag.removeprefix("v")
+          with open("pyproject.toml", "rb") as f:
+              version = tomllib.load(f)["project"]["version"]
+
+          if version != expected:
+              raise SystemExit(
+                  f"Version mismatch: tag={expected!r}, pyproject.toml={version!r}"
+              )
+
+          print(f"Verified version {version} for {tag}")
+          PY
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Validate distributions
+        run: python -m twine check dist/*
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: pycoh-${{ github.event.release.tag_name || inputs.tag }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 5
+
+  publish:
+    name: Publish distributions to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/pycoh/
+
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: pycoh-${{ github.event.release.tag_name || inputs.tag }}
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
