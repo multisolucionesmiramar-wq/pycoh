@@ -2,7 +2,7 @@
 
 *English · [Español](README.es.md)*
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22738977.svg)](https://doi.org/10.5281/zenodo.22738977)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22972086.svg)](https://doi.org/10.5281/zenodo.22972086)
 
 Parameter-efficient fine-tuning adapter for transformers. It injects a
 directional correction into the residual stream of every block, with the
@@ -76,8 +76,7 @@ downloaded model reproducing the loss.
 
 **The repository does not claim aggregate language-model performance.** A
 separate preregistered study, P5-M, reports a confirmatory comparison of
-CoH with the 2-prefix/2-suffix LoReFT configuration on frozen
-SmolLM2-360M-Instruct. Its endpoint is positional persistence: the
+CoH with the 2-prefix/2-suffix LoReFT configuration on frozen SmolLM2-360M-Instruct. Its endpoint is positional persistence: the
 relative-position slope of per-position loss improvement, not aggregate
 loss, perplexity, downstream utility, or general language-model quality.
 The study found ΔD > 0 on 48 of 69 texts (exact one-sided sign test
