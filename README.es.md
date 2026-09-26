@@ -2,7 +2,7 @@
 
 *[English](README.md) · Español*
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22738977.svg)](https://doi.org/10.5281/zenodo.22738977)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22972086.svg)](https://doi.org/10.5281/zenodo.22972086)
 
 Adaptador de ajuste fino eficiente en parámetros para transformers. Inyecta
 una corrección direccional en el residual stream de cada bloque, con el
