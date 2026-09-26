@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pycoh"
-version = "0.1.1"
+version = "0.1.2"
 description = "CoH adapter for transformers: a directional correction in the residual stream with the base model frozen"
 readme = "README.md"
 requires-python = ">=3.10"
